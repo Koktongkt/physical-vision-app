@@ -20,13 +20,22 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
    - The mismatched result recommendation fixture failed with `DID NOT RAISE` before both semantic consumers enforced exact identity with the single policy primary action.
 8. `uv run pytest tests/python/test_contracts.py -q`
    - Two automatic-completion fixtures failed with `DID NOT RAISE` before both consumers enforced verbatim final serial and calibrated-probability provenance.
+9. `uv run python C:/Users/Tan19/AppData/Local/hermes/workspace/stage1_adversarial_repro.py`
+   - Reported all five unsafe cases as `ACCEPT` and exited 1: automatic-source relabeling, automatic completion with a camera action, empty automatic serials, Windows-absolute storage keys, and self-supersession.
+10. `uv run pytest tests/python/test_contracts.py -q` and `npm run test:ts`
+    - Both paths reported `DID NOT RAISE` / `Missing expected exception` for the source/status, action, and Windows-storage-key fixtures before the parity fixes.
+11. Targeted empty-serial and self-supersession fixture commands in both language paths
+    - Each failed with `DID NOT RAISE` / `Missing expected exception` before its minimal semantic fix.
+12. `uv run pytest tests/python/test_sensitive_files.py -q`
+    - Five common credential shapes failed detection before the tracked-file scanner was expanded.
 
 ## GREEN observations
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Python suite: `41 passed`.
-- Node cross-language fixture suite: `39 passed`.
+- Python suite: `61 passed`.
+- Node cross-language fixture suite: `53 passed`.
+- Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
 - `npm audit --audit-level=moderate`: `found 0 vulnerabilities` after pinning AJV 8.20.0.
 

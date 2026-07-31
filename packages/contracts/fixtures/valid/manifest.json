@@ -34,5 +34,13 @@
   {
     "file": "deletion-pending-photo.json",
     "kind": "retained-photo-lifecycle"
+  },
+  {
+    "file": "user-confirmed-unchanged-result.json",
+    "kind": "analysis-result"
+  },
+  {
+    "file": "retained-photo-dotted-relative-key.json",
+    "kind": "retained-photo-lifecycle"
   }
 ]

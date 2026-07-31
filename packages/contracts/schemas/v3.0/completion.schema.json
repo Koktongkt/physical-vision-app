@@ -70,7 +70,8 @@
       "type": "string"
     },
     "final_serial": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "completion_source": {
       "enum": [

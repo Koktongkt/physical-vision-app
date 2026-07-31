@@ -145,7 +145,15 @@ def _validate_policy(decision: dict[str, Any]) -> None:
 
 def _validate_completion(completion: dict[str, Any]) -> None:
     source = completion["completion_source"]
+    if completion["supersedes_completion_id"] == completion["completion_id"]:
+        raise ContractValidationError("completion: cannot supersede itself")
     if source == "automatic_ocr":
+        if not all(
+            completion[field] for field in ("raw_candidate", "displayed_candidate", "final_serial")
+        ):
+            raise ContractValidationError(
+                "completion: automatic completion requires non-empty serial evidence"
+            )
         probability = completion["whole_string_exact_probability_calibrated"]
         if probability is None or probability <= completion["auto_threshold_strictly_greater_than"]:
             raise ContractValidationError(
@@ -171,6 +179,29 @@ def _validate_result(result: dict[str, Any]) -> None:
     _validate_policy(decision)
     if completion is not None:
         _validate_completion(completion)
+        if (
+            completion["completion_source"] == "automatic_ocr"
+            and result["status"] != "automatic_complete"
+        ):
+            raise ContractValidationError(
+                "analysis_result: automatic_ocr completion requires automatic_complete status"
+            )
+    if result["status"] == "automatic_complete":
+        if completion is None or completion["completion_source"] != "automatic_ocr":
+            raise ContractValidationError(
+                "analysis_result: automatic_complete status requires automatic_ocr completion"
+            )
+        if decision["primary_action"]["kind"] != "none":
+            raise ContractValidationError(
+                "analysis_result: automatic completion cannot include a primary action"
+            )
+    if result["status"] == "user_complete" and (
+        completion is None
+        or completion["completion_source"] not in {"user_corrected", "user_confirmed_ocr_unchanged"}
+    ):
+        raise ContractValidationError(
+            "analysis_result: user_complete status requires a user confirmation or correction"
+        )
 
     if result["result_id"] != snapshot["result_id"] or result["result_id"] != decision["result_id"]:
         raise ContractValidationError("analysis_result: mismatched result identity")

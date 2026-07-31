@@ -148,5 +148,65 @@
     "file": "automatic-completion-probability-mismatch.json",
     "kind": "analysis-result",
     "error_contains": "probability"
+  },
+  {
+    "file": "automatic-source-user-status.json",
+    "kind": "analysis-result",
+    "error_contains": "automatic_ocr"
+  },
+  {
+    "file": "automatic-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "primary action"
+  },
+  {
+    "file": "completion-version-provenance-mismatch.json",
+    "kind": "analysis-result",
+    "error_contains": "version provenance"
+  },
+  {
+    "file": "completion-gate-provenance-mismatch.json",
+    "kind": "analysis-result",
+    "error_contains": "every gate"
+  },
+  {
+    "file": "windows-absolute-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "automatic-completion-empty-serial.json",
+    "kind": "analysis-result",
+    "error_contains": "completion"
+  },
+  {
+    "file": "completion-self-supersession.json",
+    "kind": "completion",
+    "error_contains": "cannot supersede itself"
+  },
+  {
+    "file": "unc-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "slash-traversal-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "backslash-traversal-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "drive-relative-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "uri-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
   }
 ]

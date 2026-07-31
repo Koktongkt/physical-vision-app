@@ -33,7 +33,7 @@
     "storage_key": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?![/\\\\])(?!.*\\.\\.).+$"
+      "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))[A-Za-z0-9_-][A-Za-z0-9._-]*(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$"
     },
     "content_fingerprint": {
       "type": "string",

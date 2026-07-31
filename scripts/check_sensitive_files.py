@@ -27,7 +27,13 @@ FORBIDDEN_SUFFIXES = {
 }
 FORBIDDEN_NAMES = {".env", ".env.local", ".env.production"}
 SECRET_PATTERN = re.compile(
-    rb"(?:BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,})"
+    rb"(?:BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY"
+    rb"|gh[pousr]_[A-Za-z0-9]{20,}"
+    rb"|AKIA[0-9A-Z]{16}"
+    rb"|AIza[0-9A-Za-z_-]{35}"
+    rb"|xox[baprs]-[0-9A-Za-z-]{20,}"
+    rb"|sk-[0-9A-Za-z_-]{32,}"
+    rb"|eyJ[0-9A-Za-z_-]{20,}\.[0-9A-Za-z_-]{20,}\.[0-9A-Za-z_-]{20,})"
 )
 
 

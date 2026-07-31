@@ -93,7 +93,17 @@ function validatePolicy(decision) {
 }
 
 function validateCompletion(completion) {
+  if (completion.supersedes_completion_id === completion.completion_id)
+    fail("completion: cannot supersede itself");
   if (completion.completion_source === "automatic_ocr") {
+    if (
+      !completion.raw_candidate ||
+      !completion.displayed_candidate ||
+      !completion.final_serial
+    )
+      fail(
+        "completion: automatic completion requires non-empty serial evidence",
+      );
     const probability = completion.whole_string_exact_probability_calibrated;
     if (
       probability === null ||
@@ -124,7 +134,36 @@ function validateResult(result) {
   const completion = result.completion;
   validateRegionContainment(snapshot);
   validatePolicy(decision);
-  if (completion !== null) validateCompletion(completion);
+  if (completion !== null) {
+    validateCompletion(completion);
+    if (
+      completion.completion_source === "automatic_ocr" &&
+      result.status !== "automatic_complete"
+    )
+      fail(
+        "analysis_result: automatic_ocr completion requires automatic_complete status",
+      );
+  }
+  if (result.status === "automatic_complete") {
+    if (completion === null || completion.completion_source !== "automatic_ocr")
+      fail(
+        "analysis_result: automatic_complete status requires automatic_ocr completion",
+      );
+    if (decision.primary_action.kind !== "none")
+      fail(
+        "analysis_result: automatic completion cannot include a primary action",
+      );
+  }
+  if (
+    result.status === "user_complete" &&
+    (completion === null ||
+      !["user_corrected", "user_confirmed_ocr_unchanged"].includes(
+        completion.completion_source,
+      ))
+  )
+    fail(
+      "analysis_result: user_complete status requires a user confirmation or correction",
+    );
 
   if (
     result.result_id !== snapshot.result_id ||

@@ -6,7 +6,7 @@
 
 The contract major/minor is `3.0`; component document versions are `1.0`. Consumers must reject unsupported major versions. Compatible additive changes require a new minor contract directory and regenerated consumers. Completion semantics, status meaning, evidence gates, retention, or coordinate conventions require the specification change-control process before a schema major/minor change.
 
-JSON Schema enforces structure, enums, ranges, required fields, and conditional shapes. `physical_vision_contracts.validate_document` and `src/validator.mjs` add only cross-field semantic validation: normalized containment, immutable identity/version linkage, freshness, gate conjunction, strict PET comparison, verbatim candidates, completion linkage, and supersession. These validators do not choose guidance or run model inference. The later deterministic policy package consumes validated evidence and produces a separate decision.
+JSON Schema is the structural interchange authority: it enforces structure, enums, ranges, required fields, and conditional shapes. The normative cross-field semantic rules are this document's rule list plus the shared valid/invalid fixture manifests. `physical_vision_contracts.validate_document` and `src/validator.mjs` must implement that same corpus identically for normalized containment, immutable identity/version linkage, freshness, gate conjunction, strict PET comparison, verbatim candidates, completion linkage, and supersession. A change to either semantic validator is incomplete until the same fixture proves both language paths. These validators do not choose guidance or run model inference. The later deterministic policy package consumes validated evidence and produces a separate decision.
 
 The `0.80` threshold is explicitly `threshold_classification=PET`. It is not a validated accuracy or production claim. Automatic completion requires calibrated whole-string probability strictly greater than `0.80`, every enumerated current gate, current compatible versions, no unknown/blocker, and full immutable completion provenance.
 
@@ -23,6 +23,8 @@ npm run typecheck
 ```
 
 The checked-in generated TypeScript under `src/generated` must never be edited manually. Python exposes typed contract boundaries plus Draft 2020-12 and semantic validation. Both runtime paths execute the same fixture manifests, proving schema and semantic conformance across languages.
+
+Retained-photo `storage_key` values are canonical application-private POSIX-style relative keys. Absolute paths, backslashes, dot segments, and traversal are rejected at the contract boundary.
 
 ## Fixtures
 
