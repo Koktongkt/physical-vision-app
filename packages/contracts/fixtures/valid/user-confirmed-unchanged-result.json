@@ -128,7 +128,7 @@
       "version_compatibility": true
     },
     "all_required_gates_pass": true,
-    "automatic_completion_eligible": true,
+    "automatic_completion_eligible": false,
     "candidate_ready": true,
     "evaluated_at": "2026-07-31T10:00:01Z"
   },

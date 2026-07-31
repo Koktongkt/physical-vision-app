@@ -113,8 +113,8 @@
     "auto_threshold_strictly_greater_than": 0.8,
     "status": "internal_error",
     "primary_action": {
-      "kind": "unable",
-      "referent": null
+      "kind": "camera_left",
+      "referent": "camera"
     },
     "gate_outcomes": {
       "support": true,
@@ -138,10 +138,19 @@
   "serial_candidate": null,
   "completion": null,
   "recommendation": {
-    "kind": "unable",
-    "referent": null
+    "kind": "camera_left",
+    "referent": "camera"
   },
-  "failure": null,
+  "failure": {
+    "schema_version": "3.0",
+    "code": "PROCESSING_TIMEOUT",
+    "category": "timeout",
+    "recoverable": true,
+    "retryable": true,
+    "retry_after_ms": 500,
+    "message_key": "PROCESSING_TIMEOUT",
+    "identity_conflict": null
+  },
   "versions": {
     "schema": "3.0",
     "model": "model-id",

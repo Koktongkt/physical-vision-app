@@ -8,9 +8,9 @@
   "threshold_version": "auto-exact-pet-v1",
   "threshold_classification": "PET",
   "auto_threshold_strictly_greater_than": 0.8,
-  "status": "internal_error",
+  "status": "user_complete",
   "primary_action": {
-    "kind": "unable",
+    "kind": "none",
     "referent": null
   },
   "gate_outcomes": {

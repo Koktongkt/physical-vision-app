@@ -111,9 +111,9 @@
     "threshold_version": "auto-exact-pet-v1",
     "threshold_classification": "PET",
     "auto_threshold_strictly_greater_than": 0.8,
-    "status": "internal_error",
+    "status": "no_label",
     "primary_action": {
-      "kind": "unable",
+      "kind": "none",
       "referent": null
     },
     "gate_outcomes": {
@@ -132,15 +132,12 @@
     "candidate_ready": false,
     "evaluated_at": "2026-07-31T10:00:01Z"
   },
-  "status": "internal_error",
+  "status": "no_label",
   "capture_complete": false,
   "business_complete": false,
   "serial_candidate": null,
   "completion": null,
-  "recommendation": {
-    "kind": "unable",
-    "referent": null
-  },
+  "recommendation": null,
   "failure": null,
   "versions": {
     "schema": "3.0",

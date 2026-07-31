@@ -113,7 +113,7 @@
     "auto_threshold_strictly_greater_than": 0.8,
     "status": "internal_error",
     "primary_action": {
-      "kind": "none",
+      "kind": "unable",
       "referent": null
     },
     "gate_outcomes": {
@@ -141,7 +141,10 @@
     "editable": true
   },
   "completion": null,
-  "recommendation": null,
+  "recommendation": {
+    "kind": "unable",
+    "referent": null
+  },
   "failure": {
     "schema_version": "3.0",
     "code": "IDEMPOTENCY_CONFLICT",

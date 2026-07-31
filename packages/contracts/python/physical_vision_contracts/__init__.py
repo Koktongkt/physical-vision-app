@@ -290,6 +290,15 @@ def _validate_policy(decision: dict[str, Any]) -> None:
         raise ContractValidationError(
             "policy_decision: guidance decision requires one camera action"
         )
+    if decision["status"] == "manual_required":
+        if decision["primary_action"]["kind"] in CAMERA_ACTIONS:
+            raise ContractValidationError(
+                "policy_decision: manual_required decision cannot include a camera action"
+            )
+        if decision["primary_action"]["kind"] != "manual":
+            raise ContractValidationError(
+                "policy_decision: manual_required decision requires the manual action"
+            )
     if decision["status"] == "ready_for_verification":
         if decision["automatic_completion_eligible"]:
             raise ContractValidationError(
@@ -314,6 +323,34 @@ def _validate_policy(decision: dict[str, Any]) -> None:
     ):
         raise ContractValidationError(
             f"policy_decision: {decision['status']} decision cannot be candidate ready"
+        )
+    if decision["status"] == "user_complete" and decision["automatic_completion_eligible"]:
+        raise ContractValidationError(
+            "policy_decision: user_complete decision cannot be automatic completion eligible"
+        )
+    if decision["status"] == "user_complete" and not decision["candidate_ready"]:
+        raise ContractValidationError(
+            "policy_decision: user_complete decision requires candidate readiness"
+        )
+    action_free_statuses = {
+        "waiting",
+        "ready_for_verification",
+        "automatic_complete",
+        "user_complete",
+        "ocr_uncertain",
+        "no_label",
+        "ambiguous_label",
+    }
+    if decision["status"] in action_free_statuses and decision["primary_action"]["kind"] != "none":
+        raise ContractValidationError(
+            f"policy_decision: {decision['status']} decision cannot include a primary action"
+        )
+    if (
+        decision["status"] in {"unsupported_subject", "unsupported_input", "internal_error"}
+        and decision["primary_action"]["kind"] != "unable"
+    ):
+        raise ContractValidationError(
+            f"policy_decision: {decision['status']} decision requires the unable action"
         )
 
 
@@ -507,6 +544,46 @@ def _validate_result(result: dict[str, Any]) -> None:
     ):
         raise ContractValidationError(
             "analysis_result: candidate mutation or silent repair detected"
+        )
+    if candidate is not None and (
+        not candidate["raw"].strip() or not candidate["displayed"].strip()
+    ):
+        raise ContractValidationError(
+            "analysis_result: candidate requires non-whitespace serial text"
+        )
+    if candidate is not None and candidate["raw"] != candidate["displayed"]:
+        raise ContractValidationError(
+            "analysis_result: candidate display must preserve raw OCR exactly"
+        )
+    if (
+        result["status"] not in {"ready_for_verification", "automatic_complete", "user_complete"}
+        and candidate is not None
+    ):
+        raise ContractValidationError(
+            f"analysis_result: {result['status']} result cannot include a serial candidate"
+        )
+    if (
+        result["status"] in {"ready_for_verification", "automatic_complete", "user_complete"}
+        and result["failure"] is not None
+    ):
+        raise ContractValidationError(
+            f"analysis_result: {result['status']} result cannot include a failure"
+        )
+    if result["status"] in {"guidance", "waiting"} and result["failure"] is not None:
+        raise ContractValidationError(
+            f"analysis_result: {result['status']} result cannot include a failure"
+        )
+    failure_required_statuses = {
+        "ocr_uncertain",
+        "no_label",
+        "ambiguous_label",
+        "unsupported_subject",
+        "unsupported_input",
+        "internal_error",
+    }
+    if result["status"] in failure_required_statuses and result["failure"] is None:
+        raise ContractValidationError(
+            f"analysis_result: {result['status']} result requires a failure"
         )
 
     versions = result["versions"]

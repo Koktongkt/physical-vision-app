@@ -111,10 +111,10 @@
     "threshold_version": "auto-exact-pet-v1",
     "threshold_classification": "PET",
     "auto_threshold_strictly_greater_than": 0.8,
-    "status": "internal_error",
+    "status": "guidance",
     "primary_action": {
-      "kind": "unable",
-      "referent": null
+      "kind": "camera_left",
+      "referent": "camera"
     },
     "gate_outcomes": {
       "support": true,
@@ -132,16 +132,25 @@
     "candidate_ready": false,
     "evaluated_at": "2026-07-31T10:00:01Z"
   },
-  "status": "internal_error",
+  "status": "guidance",
   "capture_complete": false,
   "business_complete": false,
   "serial_candidate": null,
   "completion": null,
   "recommendation": {
-    "kind": "unable",
-    "referent": null
+    "kind": "camera_left",
+    "referent": "camera"
   },
-  "failure": null,
+  "failure": {
+    "schema_version": "3.0",
+    "code": "PROCESSING_TIMEOUT",
+    "category": "timeout",
+    "recoverable": true,
+    "retryable": true,
+    "retry_after_ms": 500,
+    "message_key": "PROCESSING_TIMEOUT",
+    "identity_conflict": null
+  },
   "versions": {
     "schema": "3.0",
     "model": "model-id",

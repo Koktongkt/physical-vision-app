@@ -44,16 +44,22 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
     - `uvx --from uv==0.11.31 uv run pytest -q` reported exactly `13 failed, 100 passed`.
     - `npm run test:ts` reported exactly `13` failed and `86` passed.
     - The same 13 newly checked-in fixtures failed in both language paths, proving the intended RED state before validator/schema changes.
+20. Fresh exact-commit review of `fcc7be06772315ab6d7d7d4815e153b3824573b5`
+    - The prior 74-case corpus stayed green, but a new 371-case exhaustive outcome/boundary matrix found contradictory terminal actions, user automatic relabeling, hidden candidates, success-with-failure states, incomplete failure requirements, synchronized displayed-string rewrites, whitespace-only candidates, and four additional JavaScript-unsafe integers.
+21. Third shared RED cycle
+    - The first nine exact blocker/boundary fixtures produced `9 failed, 113 passed` in Python and `9 failed, 99 passed` in Node.
+    - Twelve additional exhaustive-matrix fixtures then produced `12 failed, 122 passed` in Python and `12 failed, 108 passed` in Node before the terminal/failure/candidate matrix was completed.
 
 ## GREEN observations
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Final Python suite: `113 passed`.
-- Final Node cross-language fixture suite: `99 passed`.
+- Final Python suite: `134 passed`.
+- Final Node cross-language fixture suite: `120 passed`.
 - Python schema-to-`TypedDict` conformance: `6 passed` within the full suite.
 - Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
 - Fresh 74-case exact-review harness after the second remediation: `violations=0`, `acceptance_parity_failures=0`, `value_drifts=0`, and no typed-key mismatch.
+- Corrected 371-case novel outcome/boundary harness after the third remediation: `violations=0`, `acceptance_parity_failures=0`, and `value_drifts=0`.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
 - `npm audit --audit-level=moderate`: `found 0 vulnerabilities` after pinning AJV 8.20.0.
 

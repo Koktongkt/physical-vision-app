@@ -179,6 +179,16 @@ function validatePolicy(decision) {
     !cameraActions.has(decision.primary_action.kind)
   )
     fail("policy_decision: guidance decision requires one camera action");
+  if (decision.status === "manual_required") {
+    if (cameraActions.has(decision.primary_action.kind))
+      fail(
+        "policy_decision: manual_required decision cannot include a camera action",
+      );
+    if (decision.primary_action.kind !== "manual")
+      fail(
+        "policy_decision: manual_required decision requires the manual action",
+      );
+  }
   if (decision.status === "ready_for_verification") {
     if (decision.automatic_completion_eligible)
       fail(
@@ -204,6 +214,42 @@ function validatePolicy(decision) {
   )
     fail(
       `policy_decision: ${decision.status} decision cannot be candidate ready`,
+    );
+  if (
+    decision.status === "user_complete" &&
+    decision.automatic_completion_eligible
+  )
+    fail(
+      "policy_decision: user_complete decision cannot be automatic completion eligible",
+    );
+  if (decision.status === "user_complete" && !decision.candidate_ready)
+    fail(
+      "policy_decision: user_complete decision requires candidate readiness",
+    );
+  const actionFreeStatuses = new Set([
+    "waiting",
+    "ready_for_verification",
+    "automatic_complete",
+    "user_complete",
+    "ocr_uncertain",
+    "no_label",
+    "ambiguous_label",
+  ]);
+  if (
+    actionFreeStatuses.has(decision.status) &&
+    decision.primary_action.kind !== "none"
+  )
+    fail(
+      `policy_decision: ${decision.status} decision cannot include a primary action`,
+    );
+  if (
+    ["unsupported_subject", "unsupported_input", "internal_error"].includes(
+      decision.status,
+    ) &&
+    decision.primary_action.kind !== "unable"
+  )
+    fail(
+      `policy_decision: ${decision.status} decision requires the unable action`,
     );
 }
 
@@ -400,6 +446,44 @@ function validateResult(result) {
       candidate.displayed !== snapshot.ocr.displayed_string)
   )
     fail("analysis_result: candidate mutation or silent repair detected");
+  if (
+    candidate !== null &&
+    (!candidate.raw.trim() || !candidate.displayed.trim())
+  )
+    fail("analysis_result: candidate requires non-whitespace serial text");
+  if (candidate !== null && candidate.raw !== candidate.displayed)
+    fail("analysis_result: candidate display must preserve raw OCR exactly");
+  if (
+    !["ready_for_verification", "automatic_complete", "user_complete"].includes(
+      result.status,
+    ) &&
+    candidate !== null
+  )
+    fail(
+      `analysis_result: ${result.status} result cannot include a serial candidate`,
+    );
+  if (
+    ["ready_for_verification", "automatic_complete", "user_complete"].includes(
+      result.status,
+    ) &&
+    result.failure !== null
+  )
+    fail(`analysis_result: ${result.status} result cannot include a failure`);
+  if (
+    ["guidance", "waiting"].includes(result.status) &&
+    result.failure !== null
+  )
+    fail(`analysis_result: ${result.status} result cannot include a failure`);
+  const failureRequiredStatuses = new Set([
+    "ocr_uncertain",
+    "no_label",
+    "ambiguous_label",
+    "unsupported_subject",
+    "unsupported_input",
+    "internal_error",
+  ]);
+  if (failureRequiredStatuses.has(result.status) && result.failure === null)
+    fail(`analysis_result: ${result.status} result requires a failure`);
 
   const expectedVersions = {
     schema: snapshot.versions.schema,

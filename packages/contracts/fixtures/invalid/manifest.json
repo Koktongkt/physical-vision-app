@@ -397,7 +397,7 @@
   {
     "file": "ready-with-empty-candidate.json",
     "kind": "analysis-result",
-    "error_contains": "candidate-ready result requires non-empty candidate"
+    "error_contains": "candidate requires non-whitespace serial text"
   },
   {
     "file": "ready-with-stale-evidence.json",
@@ -438,5 +438,110 @@
     "file": "failure-code-category-mismatch.json",
     "kind": "failure-envelope",
     "error_contains": "failure code PROCESSING_TIMEOUT requires category timeout"
+  },
+  {
+    "file": "policy-manual-required-with-camera-action.json",
+    "kind": "policy-decision",
+    "error_contains": "manual_required decision cannot include a camera action"
+  },
+  {
+    "file": "internal-error-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "internal_error decision requires the unable action"
+  },
+  {
+    "file": "policy-user-complete-automatic-eligible.json",
+    "kind": "policy-decision",
+    "error_contains": "user_complete decision cannot be automatic completion eligible"
+  },
+  {
+    "file": "waiting-with-hidden-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "waiting result cannot include a serial candidate"
+  },
+  {
+    "file": "ready-with-timeout-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "ready_for_verification result cannot include a failure"
+  },
+  {
+    "file": "unsafe-retry-after-ms.json",
+    "kind": "failure-envelope",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "unsafe-retained-width.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "unsafe-retained-height.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "unsafe-deletion-attempt-count.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "deletion"
+  },
+  {
+    "file": "policy-unsupported-subject-without-unable.json",
+    "kind": "policy-decision",
+    "error_contains": "unsupported_subject decision requires the unable action"
+  },
+  {
+    "file": "policy-unsupported-input-without-unable.json",
+    "kind": "policy-decision",
+    "error_contains": "unsupported_input decision requires the unable action"
+  },
+  {
+    "file": "policy-internal-error-without-unable.json",
+    "kind": "policy-decision",
+    "error_contains": "internal_error decision requires the unable action"
+  },
+  {
+    "file": "guidance-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "guidance result cannot include a failure"
+  },
+  {
+    "file": "waiting-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "waiting result cannot include a failure"
+  },
+  {
+    "file": "ocr-uncertain-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "ocr_uncertain result requires a failure"
+  },
+  {
+    "file": "no-label-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "no_label result requires a failure"
+  },
+  {
+    "file": "ambiguous-label-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "ambiguous_label result requires a failure"
+  },
+  {
+    "file": "unsupported-subject-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "unsupported_subject result requires a failure"
+  },
+  {
+    "file": "unsupported-input-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "unsupported_input result requires a failure"
+  },
+  {
+    "file": "ready-with-synchronized-display-rewrite.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate display must preserve raw OCR exactly"
+  },
+  {
+    "file": "ready-with-whitespace-only-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate requires non-whitespace serial text"
   }
 ]

@@ -8,9 +8,9 @@
   "threshold_version": "auto-exact-pet-v1",
   "threshold_classification": "PET",
   "auto_threshold_strictly_greater_than": 0.8,
-  "status": "internal_error",
+  "status": "unsupported_input",
   "primary_action": {
-    "kind": "unable",
+    "kind": "none",
     "referent": null
   },
   "gate_outcomes": {
@@ -25,7 +25,7 @@
     "version_compatibility": true
   },
   "all_required_gates_pass": true,
-  "automatic_completion_eligible": true,
-  "candidate_ready": true,
+  "automatic_completion_eligible": false,
+  "candidate_ready": false,
   "evaluated_at": "2026-07-31T10:00:01Z"
 }

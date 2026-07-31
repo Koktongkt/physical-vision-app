@@ -111,7 +111,7 @@
     "threshold_version": "auto-exact-pet-v1",
     "threshold_classification": "PET",
     "auto_threshold_strictly_greater_than": 0.8,
-    "status": "internal_error",
+    "status": "unsupported_subject",
     "primary_action": {
       "kind": "unable",
       "referent": null
@@ -132,7 +132,7 @@
     "candidate_ready": false,
     "evaluated_at": "2026-07-31T10:00:01Z"
   },
-  "status": "internal_error",
+  "status": "unsupported_subject",
   "capture_complete": false,
   "business_complete": false,
   "serial_candidate": null,
