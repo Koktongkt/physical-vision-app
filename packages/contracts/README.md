@@ -10,6 +10,25 @@ JSON Schema is the structural interchange authority: it enforces structure, enum
 
 The `0.80` threshold is explicitly `threshold_classification=PET`. It is not a validated accuracy or production claim. Automatic completion requires calibrated whole-string probability strictly greater than `0.80`, every enumerated current gate, current compatible versions, no unknown/blocker, and full immutable completion provenance.
 
+Candidate readiness is also evidence-derived: it requires a non-empty verbatim candidate, current-attempt freshness, passing support/in-distribution OOD and localization evidence, every required quality/OCR-integrity measurement, compatible versions, and every current-attempt decision gate. `ready_for_verification` is capture-complete but never business-complete or automatically eligible. `guidance` requires one camera action and cannot be candidate-ready. Only `ready_for_verification`, `automatic_complete`, and `user_complete` may assert `capture_complete=true`; all other statuses remain capture-incomplete. Freshness counters are bounded to JavaScript's exact integer range (`<= 9007199254740991`) in the authoritative schema.
+
+Failure code/category coherence is normative:
+
+| Category              | Codes                                                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `capability`          | `PHOTO_PICKER_UNAVAILABLE`, `UPLOAD_UNAVAILABLE`                                                                                                                        |
+| `not-found`           | `SESSION_EXPIRED`, `ATTEMPT_SUPERSEDED`, `NO_LABEL_FOUND`                                                                                                               |
+| `ambiguous`           | `SEQUENCE_CONFLICT`, `IDEMPOTENCY_CONFLICT`, `MULTIPLE_LABELS_AMBIGUOUS`, `OCR_AMBIGUOUS`                                                                               |
+| `quality`             | `QUALITY_INSUFFICIENT`, `SERIAL_UNREADABLE`, `FORMAT_POLICY_MISMATCH`                                                                                                   |
+| `unsupported-input`   | `UNSUPPORTED_MEDIA_TYPE`, `ANIMATED_OR_MULTIFRAME_UNSUPPORTED`, `INVALID_OR_CORRUPT_IMAGE`, `IMAGE_DIMENSIONS_UNSUPPORTED`, `INPUT_TOO_LARGE`, `DECODE_BUDGET_EXCEEDED` |
+| `unsupported-subject` | `UNSUPPORTED_LABEL_OR_OBJECT`                                                                                                                                           |
+| `unknown`             | `SUPPORT_UNKNOWN`                                                                                                                                                       |
+| `timeout`             | `PROCESSING_TIMEOUT`                                                                                                                                                    |
+| `local-resource`      | `LOCAL_STORAGE_LIMIT`                                                                                                                                                   |
+| `deletion`            | `DELETION_PENDING`, `DELETION_FAILED`                                                                                                                                   |
+| `dependency`          | `DEPENDENCY_UNAVAILABLE`                                                                                                                                                |
+| `internal`            | `INTERNAL_PROCESSING_ERROR`                                                                                                                                             |
+
 ## Commands
 
 Use CPython 3.11.15, uv 0.11.31, Node.js 24.14.1, and npm 11.12.1. The exact

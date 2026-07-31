@@ -204,6 +204,46 @@ def _all_gates_pass(gates: Mapping[str, bool]) -> bool:
     return all(gates.values())
 
 
+CAMERA_ACTIONS = {
+    "camera_left",
+    "camera_right",
+    "camera_closer",
+    "camera_farther",
+    "camera_tilt_direct",
+    "camera_reduce_glare",
+}
+
+
+FAILURE_CATEGORIES = {
+    "PHOTO_PICKER_UNAVAILABLE": "capability",
+    "UPLOAD_UNAVAILABLE": "capability",
+    "SESSION_EXPIRED": "not-found",
+    "SEQUENCE_CONFLICT": "ambiguous",
+    "ATTEMPT_SUPERSEDED": "not-found",
+    "IDEMPOTENCY_CONFLICT": "ambiguous",
+    "UNSUPPORTED_MEDIA_TYPE": "unsupported-input",
+    "ANIMATED_OR_MULTIFRAME_UNSUPPORTED": "unsupported-input",
+    "INVALID_OR_CORRUPT_IMAGE": "unsupported-input",
+    "IMAGE_DIMENSIONS_UNSUPPORTED": "unsupported-input",
+    "INPUT_TOO_LARGE": "unsupported-input",
+    "DECODE_BUDGET_EXCEEDED": "unsupported-input",
+    "NO_LABEL_FOUND": "not-found",
+    "MULTIPLE_LABELS_AMBIGUOUS": "ambiguous",
+    "UNSUPPORTED_LABEL_OR_OBJECT": "unsupported-subject",
+    "SUPPORT_UNKNOWN": "unknown",
+    "QUALITY_INSUFFICIENT": "quality",
+    "SERIAL_UNREADABLE": "quality",
+    "OCR_AMBIGUOUS": "ambiguous",
+    "FORMAT_POLICY_MISMATCH": "quality",
+    "PROCESSING_TIMEOUT": "timeout",
+    "DEPENDENCY_UNAVAILABLE": "dependency",
+    "LOCAL_STORAGE_LIMIT": "local-resource",
+    "DELETION_PENDING": "deletion",
+    "DELETION_FAILED": "deletion",
+    "INTERNAL_PROCESSING_ERROR": "internal",
+}
+
+
 def _validate_policy(decision: dict[str, Any]) -> None:
     _validate_utc_timestamp(decision["evaluated_at"], "evaluated_at")
     conjunction = _all_gates_pass(decision["gate_outcomes"])
@@ -238,6 +278,42 @@ def _validate_policy(decision: dict[str, Any]) -> None:
     if decision["status"] == "guidance" and decision["automatic_completion_eligible"]:
         raise ContractValidationError(
             "policy_decision: guidance decision cannot be completion eligible"
+        )
+    if decision["status"] == "guidance" and decision["candidate_ready"]:
+        raise ContractValidationError(
+            "policy_decision: guidance decision cannot be candidate ready"
+        )
+    if (
+        decision["status"] == "guidance"
+        and decision["primary_action"]["kind"] not in CAMERA_ACTIONS
+    ):
+        raise ContractValidationError(
+            "policy_decision: guidance decision requires one camera action"
+        )
+    if decision["status"] == "ready_for_verification":
+        if decision["automatic_completion_eligible"]:
+            raise ContractValidationError(
+                "policy_decision: ready_for_verification decision cannot be automatic "
+                "completion eligible"
+            )
+        if not decision["candidate_ready"]:
+            raise ContractValidationError(
+                "policy_decision: ready_for_verification requires candidate readiness"
+            )
+    if (
+        decision["status"] not in {"automatic_complete", "user_complete"}
+        and decision["automatic_completion_eligible"]
+    ):
+        raise ContractValidationError(
+            f"policy_decision: {decision['status']} decision cannot be automatic completion "
+            "eligible"
+        )
+    if (
+        decision["status"] not in {"ready_for_verification", "automatic_complete", "user_complete"}
+        and decision["candidate_ready"]
+    ):
+        raise ContractValidationError(
+            f"policy_decision: {decision['status']} decision cannot be candidate ready"
         )
 
 
@@ -381,6 +457,13 @@ def _validate_result(result: dict[str, Any]) -> None:
         raise ContractValidationError(
             "analysis_result: guidance cannot claim capture_complete=true"
         )
+    if (
+        result["status"] not in {"ready_for_verification", "automatic_complete", "user_complete"}
+        and result["capture_complete"]
+    ):
+        raise ContractValidationError(
+            f"analysis_result: {result['status']} result cannot be capture complete"
+        )
 
     if completion is not None and (
         completion["result_id"] != result["result_id"]
@@ -479,19 +562,61 @@ def _validate_result(result: dict[str, Any]) -> None:
             raise ContractValidationError(
                 "analysis_result: calibrated whole-string evidence must be strictly above PET"
             )
-    if result["status"] == "ready_for_verification" and not (
-        result["capture_complete"]
-        and not result["business_complete"]
-        and completion is None
-        and candidate is not None
-        and decision["candidate_ready"]
-    ):
-        raise ContractValidationError(
-            "analysis_result: candidate-ready state separates capture from business completion"
-        )
+    if result["status"] == "ready_for_verification":
+        if not (
+            result["capture_complete"]
+            and not result["business_complete"]
+            and completion is None
+            and candidate is not None
+            and decision["candidate_ready"]
+        ):
+            raise ContractValidationError(
+                "analysis_result: candidate-ready state separates capture from business completion"
+            )
+        if not candidate["raw"] or not candidate["displayed"]:
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires non-empty candidate"
+            )
+        if not fresh:
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires fresh evidence"
+            )
+        if not (
+            snapshot["support"]["state"] == "pass"
+            and snapshot["support"]["ood_state"] == "in_distribution"
+            and snapshot["support"]["probability_calibrated"] is not None
+        ):
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires passing support evidence"
+            )
+        if snapshot["localization"]["state"] != "pass":
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires passing localization evidence"
+            )
+        if snapshot["quality"]["ocr_integrity"]["state"] != "pass":
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires passing OCR integrity evidence"
+            )
+        if any(
+            gate["state"] != "pass"
+            for name, gate in snapshot["quality"].items()
+            if name != "ocr_integrity"
+        ):
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires passing quality evidence"
+            )
+        if not decision["all_required_gates_pass"]:
+            raise ContractValidationError(
+                "analysis_result: candidate-ready result requires every current-attempt gate"
+            )
 
 
 def _validate_failure(failure: dict[str, Any]) -> None:
+    expected_category = FAILURE_CATEGORIES[failure["code"]]
+    if failure["category"] != expected_category:
+        raise ContractValidationError(
+            f"failure code {failure['code']} requires category {expected_category}"
+        )
     conflict = failure["identity_conflict"]
     if (
         failure["code"] == "IDEMPOTENCY_CONFLICT"

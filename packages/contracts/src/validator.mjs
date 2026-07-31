@@ -87,6 +87,44 @@ function allGatesPass(gates) {
   return Object.values(gates).every(Boolean);
 }
 
+const cameraActions = new Set([
+  "camera_left",
+  "camera_right",
+  "camera_closer",
+  "camera_farther",
+  "camera_tilt_direct",
+  "camera_reduce_glare",
+]);
+
+const failureCategories = new Map([
+  ["PHOTO_PICKER_UNAVAILABLE", "capability"],
+  ["UPLOAD_UNAVAILABLE", "capability"],
+  ["SESSION_EXPIRED", "not-found"],
+  ["SEQUENCE_CONFLICT", "ambiguous"],
+  ["ATTEMPT_SUPERSEDED", "not-found"],
+  ["IDEMPOTENCY_CONFLICT", "ambiguous"],
+  ["UNSUPPORTED_MEDIA_TYPE", "unsupported-input"],
+  ["ANIMATED_OR_MULTIFRAME_UNSUPPORTED", "unsupported-input"],
+  ["INVALID_OR_CORRUPT_IMAGE", "unsupported-input"],
+  ["IMAGE_DIMENSIONS_UNSUPPORTED", "unsupported-input"],
+  ["INPUT_TOO_LARGE", "unsupported-input"],
+  ["DECODE_BUDGET_EXCEEDED", "unsupported-input"],
+  ["NO_LABEL_FOUND", "not-found"],
+  ["MULTIPLE_LABELS_AMBIGUOUS", "ambiguous"],
+  ["UNSUPPORTED_LABEL_OR_OBJECT", "unsupported-subject"],
+  ["SUPPORT_UNKNOWN", "unknown"],
+  ["QUALITY_INSUFFICIENT", "quality"],
+  ["SERIAL_UNREADABLE", "quality"],
+  ["OCR_AMBIGUOUS", "ambiguous"],
+  ["FORMAT_POLICY_MISMATCH", "quality"],
+  ["PROCESSING_TIMEOUT", "timeout"],
+  ["DEPENDENCY_UNAVAILABLE", "dependency"],
+  ["LOCAL_STORAGE_LIMIT", "local-resource"],
+  ["DELETION_PENDING", "deletion"],
+  ["DELETION_FAILED", "deletion"],
+  ["INTERNAL_PROCESSING_ERROR", "internal"],
+]);
+
 function sameRecord(left, right) {
   const keys = Object.keys(left);
   return (
@@ -134,6 +172,39 @@ function validatePolicy(decision) {
     );
   if (decision.status === "guidance" && decision.automatic_completion_eligible)
     fail("policy_decision: guidance decision cannot be completion eligible");
+  if (decision.status === "guidance" && decision.candidate_ready)
+    fail("policy_decision: guidance decision cannot be candidate ready");
+  if (
+    decision.status === "guidance" &&
+    !cameraActions.has(decision.primary_action.kind)
+  )
+    fail("policy_decision: guidance decision requires one camera action");
+  if (decision.status === "ready_for_verification") {
+    if (decision.automatic_completion_eligible)
+      fail(
+        "policy_decision: ready_for_verification decision cannot be automatic completion eligible",
+      );
+    if (!decision.candidate_ready)
+      fail(
+        "policy_decision: ready_for_verification requires candidate readiness",
+      );
+  }
+  if (
+    !["automatic_complete", "user_complete"].includes(decision.status) &&
+    decision.automatic_completion_eligible
+  )
+    fail(
+      `policy_decision: ${decision.status} decision cannot be automatic completion eligible`,
+    );
+  if (
+    !["ready_for_verification", "automatic_complete", "user_complete"].includes(
+      decision.status,
+    ) &&
+    decision.candidate_ready
+  )
+    fail(
+      `policy_decision: ${decision.status} decision cannot be candidate ready`,
+    );
 }
 
 function validateCompletion(completion) {
@@ -277,6 +348,13 @@ function validateResult(result) {
   if (result.status === "guidance" && result.capture_complete)
     fail("analysis_result: guidance cannot claim capture_complete=true");
   if (
+    !["ready_for_verification", "automatic_complete", "user_complete"].includes(
+      result.status,
+    ) &&
+    result.capture_complete
+  )
+    fail(`analysis_result: ${result.status} result cannot be capture complete`);
+  if (
     completion !== null &&
     (completion.result_id !== result.result_id ||
       completion.session_id !== result.session.session_id ||
@@ -381,22 +459,62 @@ function validateResult(result) {
         "analysis_result: calibrated whole-string evidence must be strictly above PET",
       );
   }
-  if (
-    result.status === "ready_for_verification" &&
-    !(
-      result.capture_complete &&
-      !result.business_complete &&
-      completion === null &&
-      candidate !== null &&
-      decision.candidate_ready
+  if (result.status === "ready_for_verification") {
+    if (
+      !(
+        result.capture_complete &&
+        !result.business_complete &&
+        completion === null &&
+        candidate !== null &&
+        decision.candidate_ready
+      )
     )
-  )
-    fail(
-      "analysis_result: candidate-ready state separates capture from business completion",
-    );
+      fail(
+        "analysis_result: candidate-ready state separates capture from business completion",
+      );
+    if (!candidate.raw || !candidate.displayed)
+      fail(
+        "analysis_result: candidate-ready result requires non-empty candidate",
+      );
+    if (!fresh)
+      fail("analysis_result: candidate-ready result requires fresh evidence");
+    if (
+      !(
+        snapshot.support.state === "pass" &&
+        snapshot.support.ood_state === "in_distribution" &&
+        snapshot.support.probability_calibrated !== null
+      )
+    )
+      fail(
+        "analysis_result: candidate-ready result requires passing support evidence",
+      );
+    if (snapshot.localization.state !== "pass")
+      fail(
+        "analysis_result: candidate-ready result requires passing localization evidence",
+      );
+    if (snapshot.quality.ocr_integrity.state !== "pass")
+      fail(
+        "analysis_result: candidate-ready result requires passing OCR integrity evidence",
+      );
+    if (
+      Object.entries(snapshot.quality).some(
+        ([name, gate]) => name !== "ocr_integrity" && gate.state !== "pass",
+      )
+    )
+      fail(
+        "analysis_result: candidate-ready result requires passing quality evidence",
+      );
+    if (!decision.all_required_gates_pass)
+      fail(
+        "analysis_result: candidate-ready result requires every current-attempt gate",
+      );
+  }
 }
 
 function validateFailure(failure) {
+  const expectedCategory = failureCategories.get(failure.code);
+  if (failure.category !== expectedCategory)
+    fail(`failure code ${failure.code} requires category ${expectedCategory}`);
   const conflict = failure.identity_conflict;
   if (
     failure.code === "IDEMPOTENCY_CONFLICT" &&

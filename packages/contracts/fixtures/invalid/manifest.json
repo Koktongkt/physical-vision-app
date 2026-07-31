@@ -373,5 +373,70 @@
     "file": "non-utc-deletion-requested-at.json",
     "kind": "retained-photo-lifecycle",
     "error_contains": "requested_at.*UTC-Z"
+  },
+  {
+    "file": "unsafe-freshness-rounding.json",
+    "kind": "analysis-result",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "waiting-with-capture-true.json",
+    "kind": "analysis-result",
+    "error_contains": "waiting result cannot be capture complete"
+  },
+  {
+    "file": "no-label-with-capture-true.json",
+    "kind": "analysis-result",
+    "error_contains": "no_label result cannot be capture complete"
+  },
+  {
+    "file": "guidance-with-candidate-ready.json",
+    "kind": "analysis-result",
+    "error_contains": "guidance decision cannot be candidate ready"
+  },
+  {
+    "file": "ready-with-empty-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires non-empty candidate"
+  },
+  {
+    "file": "ready-with-stale-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires fresh evidence"
+  },
+  {
+    "file": "ready-with-unknown-support.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires passing support evidence"
+  },
+  {
+    "file": "ready-with-failing-quality.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires passing quality evidence"
+  },
+  {
+    "file": "ready-with-failing-ocr-integrity.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires passing OCR integrity evidence"
+  },
+  {
+    "file": "ready-with-automatic-eligibility.json",
+    "kind": "analysis-result",
+    "error_contains": "ready_for_verification decision cannot be automatic completion eligible"
+  },
+  {
+    "file": "policy-guidance-without-action.json",
+    "kind": "policy-decision",
+    "error_contains": "guidance decision requires one camera action"
+  },
+  {
+    "file": "policy-internal-error-automatic-eligible.json",
+    "kind": "policy-decision",
+    "error_contains": "internal_error decision cannot be automatic completion eligible"
+  },
+  {
+    "file": "failure-code-category-mismatch.json",
+    "kind": "failure-envelope",
+    "error_contains": "failure code PROCESSING_TIMEOUT requires category timeout"
   }
 ]

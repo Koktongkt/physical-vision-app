@@ -38,15 +38,22 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
     - The review-driven RED slice initially left 26 expected failures. A later parent `npm run test:ts` run observed 10 remaining failures: two unsafe integer cases were still accepted and eight documents were rejected for an earlier unintended invariant. The schema bounds, single-purpose fixture setup, and canonical intended-reason diagnostics were then corrected without removing the underlying checks.
 17. `uvx --from uv==0.11.31 uv run pytest tests/python/test_contracts.py::test_python_contract_types_expose_every_schema_required_field -q`
     - The final schema-to-`TypedDict` regression gate passed only after all six public Python top-level contract types exposed exactly the authoritative schema-required keys; this closes the independent type-conformance finding.
+18. Fresh exact-commit review of `2bfe402d2c56bb425f5315e1f7f544eca95ec24f`
+    - The isolated 74-case adversarial harness found 13 violated expectations: JavaScript freshness rounding accepted stale automatic evidence; candidate readiness trusted stale/unknown/failing evidence and empty candidates; the status/action/candidate/eligibility/capture matrix admitted five incompatible states; and failure code/category coherence was not enforced.
+19. Shared regression corpus before the second remediation
+    - `uvx --from uv==0.11.31 uv run pytest -q` reported exactly `13 failed, 100 passed`.
+    - `npm run test:ts` reported exactly `13` failed and `86` passed.
+    - The same 13 newly checked-in fixtures failed in both language paths, proving the intended RED state before validator/schema changes.
 
 ## GREEN observations
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Final Python suite: `100 passed`.
-- Final Node cross-language fixture suite: `86 passed`.
+- Final Python suite: `113 passed`.
+- Final Node cross-language fixture suite: `99 passed`.
 - Python schema-to-`TypedDict` conformance: `6 passed` within the full suite.
 - Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
+- Fresh 74-case exact-review harness after the second remediation: `violations=0`, `acceptance_parity_failures=0`, `value_drifts=0`, and no typed-key mismatch.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
 - `npm audit --audit-level=moderate`: `found 0 vulnerabilities` after pinning AJV 8.20.0.
 

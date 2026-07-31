@@ -89,8 +89,8 @@
     },
     "freshness": {
       "is_current_attempt": true,
-      "age_ms": 10,
-      "max_age_ms": 30000
+      "age_ms": 9007199254740993,
+      "max_age_ms": 9007199254740992
     },
     "versions": {
       "model": "model-id",
@@ -111,7 +111,7 @@
     "threshold_version": "auto-exact-pet-v1",
     "threshold_classification": "PET",
     "auto_threshold_strictly_greater_than": 0.8,
-    "status": "waiting",
+    "status": "automatic_complete",
     "primary_action": {
       "kind": "none",
       "referent": null
@@ -128,11 +128,11 @@
       "version_compatibility": true
     },
     "all_required_gates_pass": true,
-    "automatic_completion_eligible": false,
-    "candidate_ready": false,
+    "automatic_completion_eligible": true,
+    "candidate_ready": true,
     "evaluated_at": "2026-07-31T10:00:01Z"
   },
-  "status": "waiting",
+  "status": "automatic_complete",
   "capture_complete": true,
   "business_complete": true,
   "serial_candidate": {
@@ -152,7 +152,7 @@
     "raw_candidate": "00A-17/9",
     "displayed_candidate": "00A-17/9",
     "final_serial": "00A-17/9",
-    "completion_source": "user_confirmed_ocr_unchanged",
+    "completion_source": "automatic_ocr",
     "threshold_version": "auto-exact-pet-v1",
     "threshold_classification": "PET",
     "auto_threshold_strictly_greater_than": 0.8,
