@@ -35,7 +35,24 @@ function fail(message) {
 }
 
 function validateRegionContainment(snapshot) {
+  if (
+    snapshot.support.state === "pass" &&
+    snapshot.support.probability_calibrated === null
+  )
+    fail(
+      "support.probability_calibrated: pass requires measured probability evidence",
+    );
   const { label_region: label, text_region: text } = snapshot.localization;
+  if (
+    snapshot.localization.state === "pass" &&
+    [
+      label,
+      text,
+      snapshot.localization.text_containment,
+      snapshot.localization.label_confidence,
+    ].some((value) => value === null)
+  )
+    fail("localization: pass requires complete passing evidence");
   for (const [name, region] of [
     ["label_region", label],
     ["text_region", text],
@@ -61,6 +78,11 @@ function validateRegionContainment(snapshot) {
   }
 }
 
+function validateUtcTimestamp(value, field) {
+  if (!value.endsWith("Z"))
+    fail(`${field}: must use an RFC 3339 UTC-Z timestamp`);
+}
+
 function allGatesPass(gates) {
   return Object.values(gates).every(Boolean);
 }
@@ -76,6 +98,7 @@ function sameRecord(left, right) {
 }
 
 function validatePolicy(decision) {
+  validateUtcTimestamp(decision.evaluated_at, "evaluated_at");
   const conjunction = allGatesPass(decision.gate_outcomes);
   if (decision.all_required_gates_pass !== conjunction) {
     fail(
@@ -90,9 +113,31 @@ function validatePolicy(decision) {
       "policy_decision.automatic_completion_eligible: requires every gate and a candidate",
     );
   }
+  if (
+    decision.status === "automatic_complete" &&
+    !decision.automatic_completion_eligible
+  )
+    fail(
+      "policy_decision: automatic_complete requires automatic completion eligibility",
+    );
+  if (
+    ["automatic_complete", "user_complete"].includes(decision.status) &&
+    decision.primary_action.kind !== "none"
+  )
+    fail("policy_decision: completed decision cannot include a primary action");
+  if (
+    decision.status === "ready_for_verification" &&
+    decision.primary_action.kind !== "none"
+  )
+    fail(
+      "policy_decision: candidate-ready status cannot include a primary action",
+    );
+  if (decision.status === "guidance" && decision.automatic_completion_eligible)
+    fail("policy_decision: guidance decision cannot be completion eligible");
 }
 
 function validateCompletion(completion) {
+  validateUtcTimestamp(completion.created_at, "created_at");
   if (completion.supersedes_completion_id === completion.completion_id)
     fail("completion: cannot supersede itself");
   if (completion.completion_source === "automatic_ocr") {
@@ -132,8 +177,10 @@ function validateResult(result) {
   const snapshot = result.vision_evidence_snapshot;
   const decision = result.policy_decision;
   const completion = result.completion;
+  validateUtcTimestamp(snapshot.observed_at, "observed_at");
   validateRegionContainment(snapshot);
   validatePolicy(decision);
+  if (result.failure !== null) validateFailure(result.failure);
   if (completion !== null) {
     validateCompletion(completion);
     if (
@@ -149,7 +196,9 @@ function validateResult(result) {
       ) &&
       result.status !== "user_complete"
     )
-      fail("analysis_result: user completion requires user_complete status");
+      fail(
+        "analysis_result: user completion source requires user_complete status",
+      );
   }
   if (result.status === "automatic_complete") {
     if (completion === null || completion.completion_source !== "automatic_ocr")
@@ -159,6 +208,10 @@ function validateResult(result) {
     if (decision.primary_action.kind !== "none")
       fail(
         "analysis_result: automatic completion cannot include a primary action",
+      );
+    if (result.serial_candidate === null)
+      fail(
+        "analysis_result.serial_candidate: automatic completion requires the current verbatim candidate",
       );
   }
   if (
@@ -181,6 +234,11 @@ function validateResult(result) {
     fail("analysis_result: mismatched snapshot identity");
   if (result.status !== decision.status)
     fail("analysis_result: policy and result status must match");
+  if (
+    ["automatic_complete", "user_complete"].includes(result.status) &&
+    decision.primary_action.kind !== "none"
+  )
+    fail("analysis_result: completed result cannot include a primary action");
   const expectedRecommendation =
     decision.primary_action.kind === "none" ? null : decision.primary_action;
   if (
@@ -200,6 +258,24 @@ function validateResult(result) {
     fail(
       "analysis_result.capture_complete: must be true for a completed result",
     );
+  if (completion !== null && result.failure !== null)
+    fail("analysis_result: completed result cannot include a failure");
+  if (result.status === "internal_error" && result.failure === null)
+    fail("analysis_result: internal_error requires a failure");
+  if (
+    result.status === "internal_error" &&
+    (completion !== null ||
+      result.business_complete ||
+      result.capture_complete ||
+      result.serial_candidate !== null ||
+      decision.candidate_ready ||
+      decision.automatic_completion_eligible)
+  )
+    fail(
+      "analysis_result: internal_error must remain candidate-safe and incomplete",
+    );
+  if (result.status === "guidance" && result.capture_complete)
+    fail("analysis_result: guidance cannot claim capture_complete=true");
   if (
     completion !== null &&
     (completion.result_id !== result.result_id ||
@@ -208,6 +284,8 @@ function validateResult(result) {
       completion.snapshot_id !== snapshot.snapshot_id)
   )
     fail("analysis_result: completion provenance linkage mismatch");
+  if (completion !== null && completion.task_id !== result.session.task_id)
+    fail("analysis_result: task provenance linkage mismatch");
   if (completion !== null) {
     if (
       completion.raw_candidate !== snapshot.ocr.raw_string ||
@@ -318,15 +396,48 @@ function validateResult(result) {
     );
 }
 
+function validateFailure(failure) {
+  const conflict = failure.identity_conflict;
+  if (
+    failure.code === "IDEMPOTENCY_CONFLICT" &&
+    conflict.expected_fingerprint === conflict.received_fingerprint
+  )
+    fail(
+      "failure.identity_conflict: IDEMPOTENCY_CONFLICT requires different fingerprints",
+    );
+}
+
+const windowsReservedName = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i;
+
+function validateRetainedPhoto(document) {
+  validateUtcTimestamp(document.created_at, "created_at");
+  if (document.deletion !== null)
+    validateUtcTimestamp(document.deletion.requested_at, "requested_at");
+  for (const segment of document.storage_key.split("/")) {
+    if (
+      segment.endsWith(".") ||
+      segment.endsWith(" ") ||
+      windowsReservedName.test(segment)
+    )
+      fail(
+        "storage_key: segments must not alias Windows device names or end in dot/space",
+      );
+  }
+}
+
 export function validateDocument(kind, document) {
   const validator = validators.get(kind);
   if (!validator) fail(`unknown contract kind: ${kind}`);
   if (!validator(document)) {
     fail(JSON.stringify(validator.errors));
   }
-  if (kind === "vision-evidence-snapshot") validateRegionContainment(document);
-  else if (kind === "policy-decision") validatePolicy(document);
+  if (kind === "vision-evidence-snapshot") {
+    validateUtcTimestamp(document.observed_at, "observed_at");
+    validateRegionContainment(document);
+  } else if (kind === "policy-decision") validatePolicy(document);
   else if (kind === "completion") validateCompletion(document);
+  else if (kind === "failure-envelope") validateFailure(document);
+  else if (kind === "retained-photo-lifecycle") validateRetainedPhoto(document);
   else if (kind === "analysis-result") validateResult(document);
   return document;
 }

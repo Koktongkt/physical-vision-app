@@ -26,7 +26,8 @@ jobs:
           cache: npm
       - name: Install pinned dependencies
         run: |
-          uv sync --frozen --python 3.11
+          npm install --global npm@11.12.1
+          uv sync --frozen --python 3.11.15
           npm ci --ignore-scripts
       - name: Python format, lint, and tests
         run: |

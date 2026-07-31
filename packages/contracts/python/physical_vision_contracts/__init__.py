@@ -37,7 +37,7 @@ class VisionEvidenceSnapshot(TypedDict):
     snapshot_id: str
     result_id: str
     observed_at: str
-    support: dict[str, str]
+    support: dict[str, Any]
     localization: dict[str, Any]
     quality: dict[str, dict[str, str]]
     ocr: dict[str, Any]
@@ -53,34 +53,87 @@ class PolicyDecision(TypedDict):
     snapshot_id: str
     policy_version: str
     threshold_version: str
+    threshold_classification: str
+    auto_threshold_strictly_greater_than: float
     status: str
     primary_action: dict[str, Any]
     gate_outcomes: dict[str, bool]
     all_required_gates_pass: bool
     automatic_completion_eligible: bool
     candidate_ready: bool
+    evaluated_at: str
 
 
 class Completion(TypedDict):
     schema_version: str
+    completion_version: str
     completion_id: str
+    task_id: str
+    session_id: str
     result_id: str
+    decision_id: str
+    snapshot_id: str
     completion_source: str
     raw_candidate: str
     displayed_candidate: str
     final_serial: str
+    threshold_version: str
+    threshold_classification: str
+    auto_threshold_strictly_greater_than: float
+    whole_string_exact_probability_calibrated: float | None
+    gate_outcomes: dict[str, bool]
+    policy_version: str
+    calibration_version: str
+    model_version: str
+    preprocess_version: str
+    schema_version_used: str
+    idempotency_key: str
+    idempotency_fingerprint: str
+    created_at: str
     supersedes_completion_id: str | None
 
 
 class AnalysisResult(TypedDict):
     schema_version: str
     result_id: str
+    session: dict[str, Any]
+    source: dict[str, Any]
     vision_evidence_snapshot: VisionEvidenceSnapshot
     policy_decision: PolicyDecision
     status: str
     capture_complete: bool
     business_complete: bool
+    serial_candidate: dict[str, Any] | None
     completion: Completion | None
+    recommendation: dict[str, Any] | None
+    failure: FailureEnvelope | None
+    versions: dict[str, str]
+
+
+class FailureEnvelope(TypedDict):
+    schema_version: str
+    code: str
+    category: str
+    recoverable: bool
+    retryable: bool
+    retry_after_ms: int | None
+    message_key: str
+    identity_conflict: dict[str, str] | None
+
+
+class RetainedPhotoLifecycle(TypedDict):
+    schema_version: str
+    retained_photo_id: str
+    result_id: str
+    storage_key: str
+    content_fingerprint: str
+    media_type: str
+    width: int
+    height: int
+    capture_method: str
+    created_at: str
+    lifecycle: str
+    deletion: dict[str, Any] | None
 
 
 def _load_document(document: Mapping[str, Any] | str | Path) -> dict[str, Any]:
@@ -102,9 +155,26 @@ def _reject_non_finite(value: Any, path: str = "$") -> None:
 
 
 def _validate_region_containment(snapshot: dict[str, Any]) -> None:
+    if (
+        snapshot["support"]["state"] == "pass"
+        and snapshot["support"]["probability_calibrated"] is None
+    ):
+        raise ContractValidationError(
+            "support.probability_calibrated: pass requires measured probability evidence"
+        )
     localization = snapshot["localization"]
     label = localization["label_region"]
     text = localization["text_region"]
+    if localization["state"] == "pass" and any(
+        value is None
+        for value in (
+            label,
+            text,
+            localization["text_containment"],
+            localization["label_confidence"],
+        )
+    ):
+        raise ContractValidationError("localization: pass requires complete passing evidence")
     for name, region in (("label_region", label), ("text_region", text)):
         if region is not None and (
             region["x"] + region["width"] > 1 or region["y"] + region["height"] > 1
@@ -125,11 +195,17 @@ def _validate_region_containment(snapshot: dict[str, Any]) -> None:
             )
 
 
+def _validate_utc_timestamp(value: str, field: str) -> None:
+    if not value.endswith("Z"):
+        raise ContractValidationError(f"{field}: must use an RFC 3339 UTC-Z timestamp")
+
+
 def _all_gates_pass(gates: Mapping[str, bool]) -> bool:
     return all(gates.values())
 
 
 def _validate_policy(decision: dict[str, Any]) -> None:
+    _validate_utc_timestamp(decision["evaluated_at"], "evaluated_at")
     conjunction = _all_gates_pass(decision["gate_outcomes"])
     if decision["all_required_gates_pass"] is not conjunction:
         raise ContractValidationError(
@@ -141,9 +217,32 @@ def _validate_policy(decision: dict[str, Any]) -> None:
         raise ContractValidationError(
             "policy_decision.automatic_completion_eligible: requires every gate and a candidate"
         )
+    if decision["status"] == "automatic_complete" and not decision["automatic_completion_eligible"]:
+        raise ContractValidationError(
+            "policy_decision: automatic_complete requires automatic completion eligibility"
+        )
+    if (
+        decision["status"] in {"automatic_complete", "user_complete"}
+        and decision["primary_action"]["kind"] != "none"
+    ):
+        raise ContractValidationError(
+            "policy_decision: completed decision cannot include a primary action"
+        )
+    if (
+        decision["status"] == "ready_for_verification"
+        and decision["primary_action"]["kind"] != "none"
+    ):
+        raise ContractValidationError(
+            "policy_decision: candidate-ready status cannot include a primary action"
+        )
+    if decision["status"] == "guidance" and decision["automatic_completion_eligible"]:
+        raise ContractValidationError(
+            "policy_decision: guidance decision cannot be completion eligible"
+        )
 
 
 def _validate_completion(completion: dict[str, Any]) -> None:
+    _validate_utc_timestamp(completion["created_at"], "created_at")
     source = completion["completion_source"]
     if completion["supersedes_completion_id"] == completion["completion_id"]:
         raise ContractValidationError("completion: cannot supersede itself")
@@ -175,8 +274,11 @@ def _validate_result(result: dict[str, Any]) -> None:
     snapshot = result["vision_evidence_snapshot"]
     decision = result["policy_decision"]
     completion = result["completion"]
+    _validate_utc_timestamp(snapshot["observed_at"], "observed_at")
     _validate_region_containment(snapshot)
     _validate_policy(decision)
+    if result["failure"] is not None:
+        _validate_failure(result["failure"])
     if completion is not None:
         _validate_completion(completion)
         if (
@@ -191,7 +293,7 @@ def _validate_result(result: dict[str, Any]) -> None:
             and result["status"] != "user_complete"
         ):
             raise ContractValidationError(
-                "analysis_result: user completion requires user_complete status"
+                "analysis_result: user completion source requires user_complete status"
             )
     if result["status"] == "automatic_complete":
         if completion is None or completion["completion_source"] != "automatic_ocr":
@@ -202,6 +304,28 @@ def _validate_result(result: dict[str, Any]) -> None:
             raise ContractValidationError(
                 "analysis_result: automatic completion cannot include a primary action"
             )
+        if result["serial_candidate"] is None:
+            raise ContractValidationError(
+                "analysis_result.serial_candidate: automatic completion requires the current "
+                "verbatim candidate"
+            )
+        if snapshot["support"]["probability_calibrated"] is None:
+            raise ContractValidationError(
+                "analysis_result: automatic support pass requires calibrated probability"
+            )
+        if any(
+            snapshot["localization"][field] is None
+            for field in (
+                "label_region",
+                "text_region",
+                "text_containment",
+                "label_confidence",
+            )
+        ):
+            raise ContractValidationError(
+                "analysis_result: automatic localization requires passing evidence"
+            )
+
     if result["status"] == "user_complete" and (
         completion is None
         or completion["completion_source"] not in {"user_corrected", "user_confirmed_ocr_unchanged"}
@@ -216,6 +340,13 @@ def _validate_result(result: dict[str, Any]) -> None:
         raise ContractValidationError("analysis_result: mismatched snapshot identity")
     if result["status"] != decision["status"]:
         raise ContractValidationError("analysis_result: policy and result status must match")
+    if (
+        result["status"] in {"automatic_complete", "user_complete"}
+        and decision["primary_action"]["kind"] != "none"
+    ):
+        raise ContractValidationError(
+            "analysis_result: completed result cannot include a primary action"
+        )
     expected_recommendation = (
         None if decision["primary_action"]["kind"] == "none" else decision["primary_action"]
     )
@@ -231,6 +362,26 @@ def _validate_result(result: dict[str, Any]) -> None:
         raise ContractValidationError(
             "analysis_result.capture_complete: must be true for a completed result"
         )
+    if completion is not None and result["failure"] is not None:
+        raise ContractValidationError("analysis_result: completed result cannot include a failure")
+    if result["status"] == "internal_error" and result["failure"] is None:
+        raise ContractValidationError("analysis_result: internal_error requires a failure")
+    if result["status"] == "internal_error" and (
+        completion is not None
+        or result["business_complete"]
+        or result["capture_complete"]
+        or result["serial_candidate"] is not None
+        or decision["candidate_ready"]
+        or decision["automatic_completion_eligible"]
+    ):
+        raise ContractValidationError(
+            "analysis_result: internal_error must remain candidate-safe and incomplete"
+        )
+    if result["status"] == "guidance" and result["capture_complete"]:
+        raise ContractValidationError(
+            "analysis_result: guidance cannot claim capture_complete=true"
+        )
+
     if completion is not None and (
         completion["result_id"] != result["result_id"]
         or completion["session_id"] != result["session"]["session_id"]
@@ -238,6 +389,8 @@ def _validate_result(result: dict[str, Any]) -> None:
         or completion["snapshot_id"] != snapshot["snapshot_id"]
     ):
         raise ContractValidationError("analysis_result: completion provenance linkage mismatch")
+    if completion is not None and completion["task_id"] != result["session"]["task_id"]:
+        raise ContractValidationError("analysis_result: task provenance linkage mismatch")
     if completion is not None:
         if (
             completion["raw_candidate"] != snapshot["ocr"]["raw_string"]
@@ -338,6 +491,32 @@ def _validate_result(result: dict[str, Any]) -> None:
         )
 
 
+def _validate_failure(failure: dict[str, Any]) -> None:
+    conflict = failure["identity_conflict"]
+    if (
+        failure["code"] == "IDEMPOTENCY_CONFLICT"
+        and conflict["expected_fingerprint"] == conflict["received_fingerprint"]
+    ):
+        raise ContractValidationError(
+            "failure.identity_conflict: IDEMPOTENCY_CONFLICT requires different fingerprints"
+        )
+
+
+def _validate_retained_photo(document: dict[str, Any]) -> None:
+    _validate_utc_timestamp(document["created_at"], "created_at")
+    if document["deletion"] is not None:
+        _validate_utc_timestamp(document["deletion"]["requested_at"], "requested_at")
+    reserved = {"CON", "PRN", "AUX", "NUL"}
+    reserved.update(f"COM{index}" for index in range(1, 10))
+    reserved.update(f"LPT{index}" for index in range(1, 10))
+    for segment in document["storage_key"].split("/"):
+        base = segment.split(".", 1)[0].upper()
+        if segment.endswith((".", " ")) or base in reserved:
+            raise ContractValidationError(
+                "storage_key: segments must not alias Windows device names or end in dot/space"
+            )
+
+
 def _load_schemas() -> tuple[dict[str, dict[str, Any]], Registry[Any]]:
     schemas: dict[str, dict[str, Any]] = {}
     resources: list[tuple[str, Resource[Any]]] = []
@@ -368,11 +547,16 @@ def validate_document(kind: str, document: Mapping[str, Any] | str | Path) -> di
         location = ".".join(str(part) for part in error.path) or "$"
         raise ContractValidationError(f"{location}: {error.message}") from error
     if kind == "vision-evidence-snapshot":
+        _validate_utc_timestamp(payload["observed_at"], "observed_at")
         _validate_region_containment(payload)
     elif kind == "policy-decision":
         _validate_policy(payload)
     elif kind == "completion":
         _validate_completion(payload)
+    elif kind == "failure-envelope":
+        _validate_failure(payload)
+    elif kind == "retained-photo-lifecycle":
+        _validate_retained_photo(payload)
     elif kind == "analysis-result":
         _validate_result(payload)
     return payload
@@ -382,8 +566,10 @@ __all__ = [
     "AnalysisResult",
     "Completion",
     "ContractValidationError",
+    "FailureEnvelope",
     "NormalizedRegion",
     "PolicyDecision",
+    "RetainedPhotoLifecycle",
     "VisionEvidenceSnapshot",
     "validate_document",
 ]

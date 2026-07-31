@@ -12,14 +12,21 @@ The `0.80` threshold is explicitly `threshold_classification=PET`. It is not a v
 
 ## Commands
 
+Use CPython 3.11.15, uv 0.11.31, Node.js 24.14.1, and npm 11.12.1. The exact
+runtime pins are recorded in `.python-version` and `.node-version`; the project
+still supports CPython 3.11 through 3.14, so uv can create the pinned environment
+even when the host Python is newer.
+
 ```text
-uv sync --frozen --python 3.11
+npm install --global npm@11.12.1
+uv sync --frozen --python 3.11.15
 npm ci --ignore-scripts
 npm run contracts:generate   # intentionally update generated TypeScript
 npm run contracts:check      # fail on generated drift
 uv run pytest
 npm run test:ts
 npm run typecheck
+npm run format:check
 ```
 
 The checked-in generated TypeScript under `src/generated` must never be edited manually. Python exposes typed contract boundaries plus Draft 2020-12 and semantic validation. Both runtime paths execute the same fixture manifests, proving schema and semantic conformance across languages.

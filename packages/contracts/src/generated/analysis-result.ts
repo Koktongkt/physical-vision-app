@@ -103,6 +103,7 @@ export interface AnalysisResult {
   schema_version: "3.0";
   result_id: string;
   session: {
+    task_id: string;
     session_id: string;
     source_epoch: number;
     upload_sequence: number;

@@ -6,7 +6,8 @@
     "source_epoch": 1,
     "upload_sequence": 1,
     "upload_idempotency_key": "upload-key-001",
-    "content_fingerprint": "sha256:fixture-001"
+    "content_fingerprint": "sha256:fixture-001",
+    "task_id": "task-001"
   },
   "source": {
     "media_type": "image/jpeg",

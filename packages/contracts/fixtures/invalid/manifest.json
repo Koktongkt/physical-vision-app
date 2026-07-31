@@ -212,11 +212,166 @@
   {
     "file": "user-source-non-user-status.json",
     "kind": "analysis-result",
-    "error_contains": "user completion"
+    "error_contains": "user completion source requires user_complete status"
+  },
+  {
+    "file": "user-complete-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "completed decision cannot include a primary action"
   },
   {
     "file": "completed-with-capture-false.json",
     "kind": "analysis-result",
     "error_contains": "capture_complete"
+  },
+  {
+    "file": "completion-cross-task-link.json",
+    "kind": "analysis-result",
+    "error_contains": "task provenance linkage mismatch"
+  },
+  {
+    "file": "candidate-ready-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready status cannot include a primary action"
+  },
+  {
+    "file": "automatic-complete-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "completed result cannot include a failure"
+  },
+  {
+    "file": "internal-error-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "internal_error requires a failure"
+  },
+  {
+    "file": "automatic-null-support-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "support.*probability"
+  },
+  {
+    "file": "automatic-null-localization-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "localization.*passing evidence"
+  },
+  {
+    "file": "automatic-without-serial-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "serial_candidate"
+  },
+  {
+    "file": "guidance-with-capture-complete.json",
+    "kind": "analysis-result",
+    "error_contains": "guidance.*capture_complete"
+  },
+  {
+    "file": "automatic-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "completed result cannot include a failure"
+  },
+  {
+    "file": "user-complete-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "completed result cannot include a failure"
+  },
+  {
+    "file": "internal-error-with-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "internal_error.*candidate-safe"
+  },
+  {
+    "file": "policy-completed-with-action.json",
+    "kind": "policy-decision",
+    "error_contains": "completed decision cannot include a primary action"
+  },
+  {
+    "file": "policy-guidance-automatic-eligible.json",
+    "kind": "policy-decision",
+    "error_contains": "guidance decision cannot be completion eligible"
+  },
+  {
+    "file": "unsafe-source-epoch.json",
+    "kind": "analysis-result",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "unsafe-upload-sequence.json",
+    "kind": "analysis-result",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "reserved-nul-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-nul-extension-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-con-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-aux-extension-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-com1-extension-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "nested-reserved-prn-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "trailing-dot-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "nested-trailing-dot-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "nested-reserved-nul-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "idempotency-conflict-same-fingerprint.json",
+    "kind": "failure-envelope",
+    "error_contains": "different fingerprints"
+  },
+  {
+    "file": "non-utc-observed-at.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "observed_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-evaluated-at.json",
+    "kind": "policy-decision",
+    "error_contains": "evaluated_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-completion-created-at.json",
+    "kind": "completion",
+    "error_contains": "created_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-retained-created-at.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "created_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-deletion-requested-at.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "requested_at.*UTC-Z"
   }
 ]

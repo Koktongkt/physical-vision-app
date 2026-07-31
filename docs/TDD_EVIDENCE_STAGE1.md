@@ -32,13 +32,20 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
     - Failed with `DID NOT RAISE` / `Missing expected exception` before user-originated completion sources were required to use `status=user_complete`.
 14. Python and Node fixture suites with `completed-with-capture-false.json`
     - Failed with `DID NOT RAISE` / `Missing expected exception` before every linked completion required `capture_complete=true`.
+15. Fresh exact-commit adversarial review of `ab8f1cc`
+    - Independently accepted unavailable passing evidence, incomplete outcome/failure mappings, cross-task completion linkage, JavaScript-unsafe sequence identities, Windows-reserved storage segments, equal-fingerprint idempotency conflicts, and non-UTC timestamps before the expanded shared corpus and parity validators.
+16. Expanded Python and Node invalid-fixture manifests
+    - The review-driven RED slice initially left 26 expected failures. A later parent `npm run test:ts` run observed 10 remaining failures: two unsafe integer cases were still accepted and eight documents were rejected for an earlier unintended invariant. The schema bounds, single-purpose fixture setup, and canonical intended-reason diagnostics were then corrected without removing the underlying checks.
+17. `uvx --from uv==0.11.31 uv run pytest tests/python/test_contracts.py::test_python_contract_types_expose_every_schema_required_field -q`
+    - The final schema-to-`TypedDict` regression gate passed only after all six public Python top-level contract types exposed exactly the authoritative schema-required keys; this closes the independent type-conformance finding.
 
 ## GREEN observations
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Python suite: `63 passed`.
-- Node cross-language fixture suite: `55 passed`.
+- Final Python suite: `100 passed`.
+- Final Node cross-language fixture suite: `86 passed`.
+- Python schema-to-`TypedDict` conformance: `6 passed` within the full suite.
 - Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
 - `npm audit --audit-level=moderate`: `found 0 vulnerabilities` after pinning AJV 8.20.0.

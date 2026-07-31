@@ -1,0 +1,15 @@
+{
+  "schema_version": "3.0",
+  "code": "IDEMPOTENCY_CONFLICT",
+  "category": "ambiguous",
+  "recoverable": false,
+  "retryable": false,
+  "retry_after_ms": null,
+  "message_key": "IDEMPOTENCY_CONFLICT",
+  "identity_conflict": {
+    "identity_kind": "upload",
+    "idempotency_key": "upload-key-001",
+    "expected_fingerprint": "sha256:a",
+    "received_fingerprint": "sha256:a"
+  }
+}
