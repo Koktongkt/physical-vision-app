@@ -331,16 +331,21 @@ function validateResult(result) {
         "analysis_result.serial_candidate: automatic completion requires the current verbatim candidate",
       );
   }
-  if (
-    result.status === "user_complete" &&
-    (completion === null ||
+  if (result.status === "user_complete") {
+    if (result.serial_candidate === null)
+      fail(
+        "analysis_result: user_complete status requires a non-null serial candidate",
+      );
+    if (
+      completion === null ||
       !["user_corrected", "user_confirmed_ocr_unchanged"].includes(
         completion.completion_source,
-      ))
-  )
-    fail(
-      "analysis_result: user_complete status requires a user confirmation or correction",
-    );
+      )
+    )
+      fail(
+        "analysis_result: user_complete status requires a user confirmation or correction",
+      );
+  }
 
   if (
     result.result_id !== snapshot.result_id ||

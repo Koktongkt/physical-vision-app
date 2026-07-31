@@ -439,13 +439,18 @@ def _validate_result(result: dict[str, Any]) -> None:
                 "analysis_result: automatic localization requires passing evidence"
             )
 
-    if result["status"] == "user_complete" and (
-        completion is None
-        or completion["completion_source"] not in {"user_corrected", "user_confirmed_ocr_unchanged"}
-    ):
-        raise ContractValidationError(
-            "analysis_result: user_complete status requires a user confirmation or correction"
-        )
+    if result["status"] == "user_complete":
+        if result["serial_candidate"] is None:
+            raise ContractValidationError(
+                "analysis_result: user_complete status requires a non-null serial candidate"
+            )
+        if completion is None or completion["completion_source"] not in {
+            "user_corrected",
+            "user_confirmed_ocr_unchanged",
+        }:
+            raise ContractValidationError(
+                "analysis_result: user_complete status requires a user confirmation or correction"
+            )
 
     if result["result_id"] != snapshot["result_id"] or result["result_id"] != decision["result_id"]:
         raise ContractValidationError("analysis_result: mismatched result identity")

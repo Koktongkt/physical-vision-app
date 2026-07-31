@@ -543,5 +543,10 @@
     "file": "ready-with-whitespace-only-candidate.json",
     "kind": "analysis-result",
     "error_contains": "candidate requires non-whitespace serial text"
+  },
+  {
+    "file": "user-complete-without-serial-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "user_complete status requires a non-null serial candidate"
   }
 ]

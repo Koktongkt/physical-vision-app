@@ -49,17 +49,22 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
 21. Third shared RED cycle
     - The first nine exact blocker/boundary fixtures produced `9 failed, 113 passed` in Python and `9 failed, 99 passed` in Node.
     - Twelve additional exhaustive-matrix fixtures then produced `12 failed, 122 passed` in Python and `12 failed, 108 passed` in Node before the terminal/failure/candidate matrix was completed.
+22. Fresh exact-commit review of `c9b5d8284db60ab809045189fef82240307f1f1e`
+    - A new 138-case supplemental matrix found one remaining contradiction: `user_complete` accepted a null result-level serial candidate while claiming candidate readiness and immutable completion.
+    - The checked-in symmetric fixture produced exactly `1 failed, 134 passed` in Python and `1 failed, 120 passed` in Node before the minimal status-specific non-null requirement.
 
 ## GREEN observations
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Final Python suite: `134 passed`.
-- Final Node cross-language fixture suite: `120 passed`.
+- Final Python suite: `135 passed`.
+- Final Node cross-language fixture suite: `121 passed`.
 - Python schema-to-`TypedDict` conformance: `6 passed` within the full suite.
 - Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
 - Fresh 74-case exact-review harness after the second remediation: `violations=0`, `acceptance_parity_failures=0`, `value_drifts=0`, and no typed-key mismatch.
 - Corrected 371-case novel outcome/boundary harness after the third remediation: `violations=0`, `acceptance_parity_failures=0`, and `value_drifts=0`.
+- Fresh 38-case boundary suite: `violations=0`, `acceptance_parity_failures=0`, and `value_drifts=0`.
+- Fresh 138-case supplemental outcome matrix after the final remediation: `violations=0` and `acceptance_parity_failures=0`.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
 - `npm audit --audit-level=moderate`: `found 0 vulnerabilities` after pinning AJV 8.20.0.
 
