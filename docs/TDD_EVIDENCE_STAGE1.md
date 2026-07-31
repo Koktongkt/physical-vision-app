@@ -33,7 +33,7 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Python suite: `61 passed`.
+- Python contract fixture suite: `55 passed`; final full `pytest` suite: `61 passed`.
 - Node cross-language fixture suite: `53 passed`.
 - Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
