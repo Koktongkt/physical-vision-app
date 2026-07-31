@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physical-vision.local/contracts/v3.0/failure-envelope.schema.json",
+  "title": "FailureEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "code",
+    "category",
+    "recoverable",
+    "retryable",
+    "retry_after_ms",
+    "message_key",
+    "identity_conflict"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "code": {
+      "enum": [
+        "PHOTO_PICKER_UNAVAILABLE",
+        "UPLOAD_UNAVAILABLE",
+        "SESSION_EXPIRED",
+        "SEQUENCE_CONFLICT",
+        "ATTEMPT_SUPERSEDED",
+        "IDEMPOTENCY_CONFLICT",
+        "UNSUPPORTED_MEDIA_TYPE",
+        "ANIMATED_OR_MULTIFRAME_UNSUPPORTED",
+        "INVALID_OR_CORRUPT_IMAGE",
+        "IMAGE_DIMENSIONS_UNSUPPORTED",
+        "INPUT_TOO_LARGE",
+        "DECODE_BUDGET_EXCEEDED",
+        "NO_LABEL_FOUND",
+        "MULTIPLE_LABELS_AMBIGUOUS",
+        "UNSUPPORTED_LABEL_OR_OBJECT",
+        "SUPPORT_UNKNOWN",
+        "QUALITY_INSUFFICIENT",
+        "SERIAL_UNREADABLE",
+        "OCR_AMBIGUOUS",
+        "FORMAT_POLICY_MISMATCH",
+        "PROCESSING_TIMEOUT",
+        "DEPENDENCY_UNAVAILABLE",
+        "LOCAL_STORAGE_LIMIT",
+        "DELETION_PENDING",
+        "DELETION_FAILED",
+        "INTERNAL_PROCESSING_ERROR"
+      ]
+    },
+    "category": {
+      "enum": [
+        "capability",
+        "not-found",
+        "ambiguous",
+        "quality",
+        "unsupported-input",
+        "unsupported-subject",
+        "unknown",
+        "timeout",
+        "local-resource",
+        "deletion",
+        "dependency",
+        "internal"
+      ]
+    },
+    "recoverable": {
+      "type": "boolean"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "retry_after_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "message_key": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_]+$"
+    },
+    "identity_conflict": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identity_kind",
+            "idempotency_key",
+            "expected_fingerprint",
+            "received_fingerprint"
+          ],
+          "properties": {
+            "identity_kind": {
+              "enum": ["upload", "completion"]
+            },
+            "idempotency_key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expected_fingerprint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "received_fingerprint": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "IDEMPOTENCY_CONFLICT"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "identity_conflict": {
+            "type": "object"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "identity_conflict": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

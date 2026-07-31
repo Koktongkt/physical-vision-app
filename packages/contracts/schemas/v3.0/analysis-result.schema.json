@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physical-vision.local/contracts/v3.0/analysis-result.schema.json",
+  "title": "AnalysisResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_id",
+    "session",
+    "source",
+    "vision_evidence_snapshot",
+    "policy_decision",
+    "status",
+    "capture_complete",
+    "business_complete",
+    "serial_candidate",
+    "completion",
+    "recommendation",
+    "failure",
+    "versions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "session_id",
+        "source_epoch",
+        "upload_sequence",
+        "upload_idempotency_key",
+        "content_fingerprint"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "upload_sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "upload_idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_fingerprint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "media_type",
+        "capture_method",
+        "capture_provenance",
+        "orientation_transform_id"
+      ],
+      "properties": {
+        "media_type": {
+          "enum": ["image/jpeg", "image/png"]
+        },
+        "capture_method": {
+          "enum": [
+            "screen_capture",
+            "smartphone_camera_capture",
+            "ordinary_file_upload"
+          ]
+        },
+        "capture_provenance": {
+          "enum": ["physical", "replayed"]
+        },
+        "orientation_transform_id": {
+          "const": "exif-once-v1"
+        }
+      }
+    },
+    "vision_evidence_snapshot": {
+      "$ref": "https://physical-vision.local/contracts/v3.0/vision-evidence-snapshot.schema.json"
+    },
+    "policy_decision": {
+      "$ref": "https://physical-vision.local/contracts/v3.0/policy-decision.schema.json"
+    },
+    "status": {
+      "enum": [
+        "guidance",
+        "waiting",
+        "ready_for_verification",
+        "automatic_complete",
+        "user_complete",
+        "ocr_uncertain",
+        "no_label",
+        "ambiguous_label",
+        "unsupported_subject",
+        "unsupported_input",
+        "manual_required",
+        "internal_error"
+      ]
+    },
+    "capture_complete": {
+      "type": "boolean"
+    },
+    "business_complete": {
+      "type": "boolean"
+    },
+    "serial_candidate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["raw", "displayed", "editable"],
+          "properties": {
+            "raw": {
+              "type": "string"
+            },
+            "displayed": {
+              "type": "string"
+            },
+            "editable": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "completion": {
+      "oneOf": [
+        {
+          "$ref": "https://physical-vision.local/contracts/v3.0/completion.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recommendation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "referent"],
+          "properties": {
+            "kind": {
+              "enum": [
+                "none",
+                "camera_left",
+                "camera_right",
+                "camera_closer",
+                "camera_farther",
+                "camera_tilt_direct",
+                "camera_reduce_glare",
+                "manual",
+                "unable"
+              ]
+            },
+            "referent": {
+              "type": ["string", "null"],
+              "enum": ["camera", null]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "camera_left",
+                      "camera_right",
+                      "camera_closer",
+                      "camera_farther",
+                      "camera_tilt_direct",
+                      "camera_reduce_glare"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "referent": {
+                    "const": "camera"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "referent": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "failure": {
+      "oneOf": [
+        {
+          "$ref": "https://physical-vision.local/contracts/v3.0/failure-envelope.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "model",
+        "preprocess",
+        "calibration",
+        "policy",
+        "threshold"
+      ],
+      "properties": {
+        "schema": {
+          "const": "3.0"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preprocess": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calibration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threshold": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

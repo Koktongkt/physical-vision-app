@@ -1,0 +1,10 @@
+{
+  "schema_version": "3.0",
+  "code": "PROCESSING_TIMEOUT",
+  "category": "internal",
+  "recoverable": true,
+  "retryable": true,
+  "retry_after_ms": 500,
+  "message_key": "PROCESSING_TIMEOUT",
+  "identity_conflict": null
+}

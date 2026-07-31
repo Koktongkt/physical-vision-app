@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physical-vision.local/contracts/v3.0/completion.schema.json",
+  "title": "Completion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "completion_version",
+    "completion_id",
+    "task_id",
+    "session_id",
+    "result_id",
+    "decision_id",
+    "snapshot_id",
+    "raw_candidate",
+    "displayed_candidate",
+    "final_serial",
+    "completion_source",
+    "threshold_version",
+    "threshold_classification",
+    "auto_threshold_strictly_greater_than",
+    "whole_string_exact_probability_calibrated",
+    "gate_outcomes",
+    "policy_version",
+    "calibration_version",
+    "model_version",
+    "preprocess_version",
+    "schema_version_used",
+    "idempotency_key",
+    "idempotency_fingerprint",
+    "created_at",
+    "supersedes_completion_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "completion_version": {
+      "const": "1.0"
+    },
+    "completion_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "raw_candidate": {
+      "type": "string"
+    },
+    "displayed_candidate": {
+      "type": "string"
+    },
+    "final_serial": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completion_source": {
+      "enum": [
+        "automatic_ocr",
+        "user_confirmed_ocr_unchanged",
+        "user_corrected"
+      ]
+    },
+    "threshold_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "threshold_classification": {
+      "const": "PET"
+    },
+    "auto_threshold_strictly_greater_than": {
+      "const": 0.8
+    },
+    "whole_string_exact_probability_calibrated": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "gate_outcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "support",
+        "localization",
+        "quality",
+        "ocr_integrity",
+        "freshness",
+        "format_policy",
+        "deterministic_safety",
+        "no_unknown_blocking",
+        "version_compatibility"
+      ],
+      "properties": {
+        "support": {
+          "type": "boolean"
+        },
+        "localization": {
+          "type": "boolean"
+        },
+        "quality": {
+          "type": "boolean"
+        },
+        "ocr_integrity": {
+          "type": "boolean"
+        },
+        "freshness": {
+          "type": "boolean"
+        },
+        "format_policy": {
+          "type": "boolean"
+        },
+        "deterministic_safety": {
+          "type": "boolean"
+        },
+        "no_unknown_blocking": {
+          "type": "boolean"
+        },
+        "version_compatibility": {
+          "type": "boolean"
+        }
+      }
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "calibration_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "preprocess_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version_used": {
+      "const": "3.0"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "supersedes_completion_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "completion_source": {
+            "const": "user_corrected"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "supersedes_completion_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "supersedes_completion_id": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

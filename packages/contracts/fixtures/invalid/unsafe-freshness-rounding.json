@@ -1,0 +1,191 @@
+{
+  "schema_version": "3.0",
+  "result_id": "result-001",
+  "session": {
+    "session_id": "session-001",
+    "source_epoch": 1,
+    "upload_sequence": 1,
+    "upload_idempotency_key": "upload-key-001",
+    "content_fingerprint": "sha256:fixture-001",
+    "task_id": "task-001"
+  },
+  "source": {
+    "media_type": "image/jpeg",
+    "capture_method": "smartphone_camera_capture",
+    "capture_provenance": "physical",
+    "orientation_transform_id": "exif-once-v1"
+  },
+  "vision_evidence_snapshot": {
+    "schema_version": "3.0",
+    "snapshot_version": "1.0",
+    "snapshot_id": "snapshot-001",
+    "result_id": "result-001",
+    "observed_at": "2026-07-31T10:00:00Z",
+    "support": {
+      "state": "pass",
+      "ood_state": "in_distribution",
+      "probability_calibrated": 0.97
+    },
+    "localization": {
+      "state": "pass",
+      "label_region": {
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.8,
+        "height": 0.6
+      },
+      "text_region": {
+        "x": 0.2,
+        "y": 0.3,
+        "width": 0.5,
+        "height": 0.2
+      },
+      "text_containment": 0.98,
+      "label_confidence": 0.96
+    },
+    "quality": {
+      "crop": {
+        "state": "pass"
+      },
+      "scale": {
+        "state": "pass"
+      },
+      "center": {
+        "state": "pass"
+      },
+      "blur": {
+        "state": "pass"
+      },
+      "exposure": {
+        "state": "pass"
+      },
+      "contrast": {
+        "state": "pass"
+      },
+      "glare": {
+        "state": "pass"
+      },
+      "occlusion": {
+        "state": "pass"
+      },
+      "perspective": {
+        "state": "pass"
+      },
+      "ocr_integrity": {
+        "state": "pass"
+      },
+      "overall": {
+        "state": "pass"
+      }
+    },
+    "ocr": {
+      "raw_string": "00A-17/9",
+      "displayed_string": "00A-17/9",
+      "whole_string_exact_probability_calibrated": 0.83,
+      "format_warning": null,
+      "checksum_warning": null,
+      "silent_repair_applied": false,
+      "candidate_mutated": false
+    },
+    "freshness": {
+      "is_current_attempt": true,
+      "age_ms": 9007199254740993,
+      "max_age_ms": 9007199254740992
+    },
+    "versions": {
+      "model": "model-id",
+      "preprocess": "prep-id",
+      "calibration": "cal-id",
+      "schema": "3.0",
+      "policy_compatible": "policy-id",
+      "threshold_compatible": "auto-exact-pet-v1"
+    }
+  },
+  "policy_decision": {
+    "schema_version": "3.0",
+    "decision_version": "1.0",
+    "decision_id": "decision-001",
+    "result_id": "result-001",
+    "snapshot_id": "snapshot-001",
+    "policy_version": "policy-id",
+    "threshold_version": "auto-exact-pet-v1",
+    "threshold_classification": "PET",
+    "auto_threshold_strictly_greater_than": 0.8,
+    "status": "automatic_complete",
+    "primary_action": {
+      "kind": "none",
+      "referent": null
+    },
+    "gate_outcomes": {
+      "support": true,
+      "localization": true,
+      "quality": true,
+      "ocr_integrity": true,
+      "freshness": true,
+      "format_policy": true,
+      "deterministic_safety": true,
+      "no_unknown_blocking": true,
+      "version_compatibility": true
+    },
+    "all_required_gates_pass": true,
+    "automatic_completion_eligible": true,
+    "candidate_ready": true,
+    "evaluated_at": "2026-07-31T10:00:01Z"
+  },
+  "status": "automatic_complete",
+  "capture_complete": true,
+  "business_complete": true,
+  "serial_candidate": {
+    "raw": "00A-17/9",
+    "displayed": "00A-17/9",
+    "editable": true
+  },
+  "completion": {
+    "schema_version": "3.0",
+    "completion_version": "1.0",
+    "completion_id": "completion-001",
+    "task_id": "task-001",
+    "session_id": "session-001",
+    "result_id": "result-001",
+    "decision_id": "decision-001",
+    "snapshot_id": "snapshot-001",
+    "raw_candidate": "00A-17/9",
+    "displayed_candidate": "00A-17/9",
+    "final_serial": "00A-17/9",
+    "completion_source": "automatic_ocr",
+    "threshold_version": "auto-exact-pet-v1",
+    "threshold_classification": "PET",
+    "auto_threshold_strictly_greater_than": 0.8,
+    "whole_string_exact_probability_calibrated": 0.83,
+    "gate_outcomes": {
+      "support": true,
+      "localization": true,
+      "quality": true,
+      "ocr_integrity": true,
+      "freshness": true,
+      "format_policy": true,
+      "deterministic_safety": true,
+      "no_unknown_blocking": true,
+      "version_compatibility": true
+    },
+    "policy_version": "policy-id",
+    "calibration_version": "cal-id",
+    "model_version": "model-id",
+    "preprocess_version": "prep-id",
+    "schema_version_used": "3.0",
+    "idempotency_key": "completion-key-001",
+    "idempotency_fingerprint": "sha256:completion-001",
+    "created_at": "2026-07-31T10:00:02Z",
+    "supersedes_completion_id": null
+  },
+  "recommendation": null,
+  "failure": null,
+  "versions": {
+    "schema": "3.0",
+    "model": "model-id",
+    "preprocess": "prep-id",
+    "calibration": "cal-id",
+    "policy": "policy-id",
+    "threshold": "auto-exact-pet-v1"
+  }
+}

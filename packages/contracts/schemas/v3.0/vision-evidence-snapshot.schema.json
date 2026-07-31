@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physical-vision.local/contracts/v3.0/vision-evidence-snapshot.schema.json",
+  "title": "VisionEvidenceSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "snapshot_version",
+    "snapshot_id",
+    "result_id",
+    "observed_at",
+    "support",
+    "localization",
+    "quality",
+    "ocr",
+    "freshness",
+    "versions"
+  ],
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": { "state": { "enum": ["pass", "fail", "unknown"] } }
+    },
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "snapshot_version": { "const": "1.0" },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "result_id": { "type": "string", "minLength": 1 },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "ood_state", "probability_calibrated"],
+      "properties": {
+        "state": { "enum": ["pass", "fail", "unknown"] },
+        "ood_state": {
+          "enum": ["in_distribution", "out_of_distribution", "unknown"]
+        },
+        "probability_calibrated": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "localization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "label_region",
+        "text_region",
+        "text_containment",
+        "label_confidence"
+      ],
+      "properties": {
+        "state": { "enum": ["pass", "fail", "unknown"] },
+        "label_region": {
+          "oneOf": [{ "$ref": "#/$defs/region" }, { "type": "null" }]
+        },
+        "text_region": {
+          "oneOf": [{ "$ref": "#/$defs/region" }, { "type": "null" }]
+        },
+        "text_containment": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "label_confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "crop",
+        "scale",
+        "center",
+        "blur",
+        "exposure",
+        "contrast",
+        "glare",
+        "occlusion",
+        "perspective",
+        "ocr_integrity",
+        "overall"
+      ],
+      "properties": {
+        "crop": { "$ref": "#/$defs/gate" },
+        "scale": { "$ref": "#/$defs/gate" },
+        "center": { "$ref": "#/$defs/gate" },
+        "blur": { "$ref": "#/$defs/gate" },
+        "exposure": { "$ref": "#/$defs/gate" },
+        "contrast": { "$ref": "#/$defs/gate" },
+        "glare": { "$ref": "#/$defs/gate" },
+        "occlusion": { "$ref": "#/$defs/gate" },
+        "perspective": { "$ref": "#/$defs/gate" },
+        "ocr_integrity": { "$ref": "#/$defs/gate" },
+        "overall": { "$ref": "#/$defs/gate" }
+      }
+    },
+    "ocr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_string",
+        "displayed_string",
+        "whole_string_exact_probability_calibrated",
+        "format_warning",
+        "checksum_warning",
+        "silent_repair_applied",
+        "candidate_mutated"
+      ],
+      "properties": {
+        "raw_string": { "type": "string" },
+        "displayed_string": { "type": "string" },
+        "whole_string_exact_probability_calibrated": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "format_warning": { "type": ["string", "null"] },
+        "checksum_warning": { "type": ["string", "null"] },
+        "silent_repair_applied": { "const": false },
+        "candidate_mutated": { "const": false }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["is_current_attempt", "age_ms", "max_age_ms"],
+      "properties": {
+        "is_current_attempt": { "type": "boolean" },
+        "age_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_age_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "preprocess",
+        "calibration",
+        "schema",
+        "policy_compatible",
+        "threshold_compatible"
+      ],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "preprocess": { "type": "string", "minLength": 1 },
+        "calibration": { "type": "string", "minLength": 1 },
+        "schema": { "const": "3.0" },
+        "policy_compatible": { "type": "string", "minLength": 1 },
+        "threshold_compatible": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,552 @@
+[
+  {
+    "file": "missing-required-evidence.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "quality"
+  },
+  {
+    "file": "probability-over-one.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "region-out-of-bounds.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "bounds"
+  },
+  {
+    "file": "text-outside-label.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "contained"
+  },
+  {
+    "file": "silent-repair.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "False"
+  },
+  {
+    "file": "candidate-mutation-flag.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "False"
+  },
+  {
+    "file": "unknown-support-auto.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "unknown-ood-auto.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "pet-exact-boundary-auto.json",
+    "kind": "analysis-result",
+    "error_contains": "strictly above PET"
+  },
+  {
+    "file": "high-confidence-failing-quality-gate.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "format-checksum-without-calibration.json",
+    "kind": "analysis-result",
+    "error_contains": "strictly above PET"
+  },
+  {
+    "file": "mutated-displayed-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "mutation"
+  },
+  {
+    "file": "mismatched-model-version.json",
+    "kind": "analysis-result",
+    "error_contains": "versions"
+  },
+  {
+    "file": "incompatible-policy-version.json",
+    "kind": "analysis-result",
+    "error_contains": "incompatible"
+  },
+  {
+    "file": "stale-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "completion-with-business-false.json",
+    "kind": "analysis-result",
+    "error_contains": "business_complete"
+  },
+  {
+    "file": "automatic-with-failing-policy-gate.json",
+    "kind": "analysis-result",
+    "error_contains": "automatic_completion_eligible"
+  },
+  {
+    "file": "multiple-primary-actions.json",
+    "kind": "analysis-result",
+    "error_contains": "Additional"
+  },
+  {
+    "file": "camera-action-without-camera-referent.json",
+    "kind": "analysis-result",
+    "error_contains": "camera"
+  },
+  {
+    "file": "correction-without-supersession.json",
+    "kind": "completion",
+    "error_contains": "string"
+  },
+  {
+    "file": "ordinary-upload-retained.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "one of"
+  },
+  {
+    "file": "deletion-pending-readable.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "False"
+  },
+  {
+    "file": "idempotency-conflict-without-identity.json",
+    "kind": "failure-envelope",
+    "error_contains": "object"
+  },
+  {
+    "file": "probability-nan.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "finite"
+  },
+  {
+    "file": "probability-infinity.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "finite"
+  },
+  {
+    "file": "support-confidence-below-zero.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "minimum"
+  },
+  {
+    "file": "label-confidence-over-one.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "mismatched-result-recommendation.json",
+    "kind": "analysis-result",
+    "error_contains": "recommendation"
+  },
+  {
+    "file": "automatic-completion-mutated-final.json",
+    "kind": "analysis-result",
+    "error_contains": "verbatim"
+  },
+  {
+    "file": "automatic-completion-probability-mismatch.json",
+    "kind": "analysis-result",
+    "error_contains": "probability"
+  },
+  {
+    "file": "automatic-source-user-status.json",
+    "kind": "analysis-result",
+    "error_contains": "automatic_ocr"
+  },
+  {
+    "file": "automatic-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "primary action"
+  },
+  {
+    "file": "completion-version-provenance-mismatch.json",
+    "kind": "analysis-result",
+    "error_contains": "version provenance"
+  },
+  {
+    "file": "completion-gate-provenance-mismatch.json",
+    "kind": "analysis-result",
+    "error_contains": "every gate"
+  },
+  {
+    "file": "windows-absolute-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "automatic-completion-empty-serial.json",
+    "kind": "analysis-result",
+    "error_contains": "completion"
+  },
+  {
+    "file": "completion-self-supersession.json",
+    "kind": "completion",
+    "error_contains": "cannot supersede itself"
+  },
+  {
+    "file": "unc-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "slash-traversal-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "backslash-traversal-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "drive-relative-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "uri-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "user-source-non-user-status.json",
+    "kind": "analysis-result",
+    "error_contains": "user completion source requires user_complete status"
+  },
+  {
+    "file": "user-complete-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "completed decision cannot include a primary action"
+  },
+  {
+    "file": "completed-with-capture-false.json",
+    "kind": "analysis-result",
+    "error_contains": "capture_complete"
+  },
+  {
+    "file": "completion-cross-task-link.json",
+    "kind": "analysis-result",
+    "error_contains": "task provenance linkage mismatch"
+  },
+  {
+    "file": "candidate-ready-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready status cannot include a primary action"
+  },
+  {
+    "file": "automatic-complete-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "completed result cannot include a failure"
+  },
+  {
+    "file": "internal-error-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "internal_error requires a failure"
+  },
+  {
+    "file": "automatic-null-support-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "support.*probability"
+  },
+  {
+    "file": "automatic-null-localization-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "localization.*passing evidence"
+  },
+  {
+    "file": "automatic-without-serial-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "serial_candidate"
+  },
+  {
+    "file": "guidance-with-capture-complete.json",
+    "kind": "analysis-result",
+    "error_contains": "guidance.*capture_complete"
+  },
+  {
+    "file": "automatic-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "completed result cannot include a failure"
+  },
+  {
+    "file": "user-complete-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "completed result cannot include a failure"
+  },
+  {
+    "file": "internal-error-with-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "internal_error.*candidate-safe"
+  },
+  {
+    "file": "policy-completed-with-action.json",
+    "kind": "policy-decision",
+    "error_contains": "completed decision cannot include a primary action"
+  },
+  {
+    "file": "policy-guidance-automatic-eligible.json",
+    "kind": "policy-decision",
+    "error_contains": "guidance decision cannot be completion eligible"
+  },
+  {
+    "file": "unsafe-source-epoch.json",
+    "kind": "analysis-result",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "unsafe-upload-sequence.json",
+    "kind": "analysis-result",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "reserved-nul-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-nul-extension-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-con-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-aux-extension-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "reserved-com1-extension-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "nested-reserved-prn-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "trailing-dot-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "nested-trailing-dot-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "nested-reserved-nul-storage-key.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "storage_key"
+  },
+  {
+    "file": "idempotency-conflict-same-fingerprint.json",
+    "kind": "failure-envelope",
+    "error_contains": "different fingerprints"
+  },
+  {
+    "file": "non-utc-observed-at.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "observed_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-evaluated-at.json",
+    "kind": "policy-decision",
+    "error_contains": "evaluated_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-completion-created-at.json",
+    "kind": "completion",
+    "error_contains": "created_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-retained-created-at.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "created_at.*UTC-Z"
+  },
+  {
+    "file": "non-utc-deletion-requested-at.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "requested_at.*UTC-Z"
+  },
+  {
+    "file": "unsafe-freshness-rounding.json",
+    "kind": "analysis-result",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "waiting-with-capture-true.json",
+    "kind": "analysis-result",
+    "error_contains": "waiting result cannot be capture complete"
+  },
+  {
+    "file": "no-label-with-capture-true.json",
+    "kind": "analysis-result",
+    "error_contains": "no_label result cannot be capture complete"
+  },
+  {
+    "file": "guidance-with-candidate-ready.json",
+    "kind": "analysis-result",
+    "error_contains": "guidance decision cannot be candidate ready"
+  },
+  {
+    "file": "ready-with-empty-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate requires non-whitespace serial text"
+  },
+  {
+    "file": "ready-with-stale-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires fresh evidence"
+  },
+  {
+    "file": "ready-with-unknown-support.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires passing support evidence"
+  },
+  {
+    "file": "ready-with-failing-quality.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires passing quality evidence"
+  },
+  {
+    "file": "ready-with-failing-ocr-integrity.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate-ready result requires passing OCR integrity evidence"
+  },
+  {
+    "file": "ready-with-automatic-eligibility.json",
+    "kind": "analysis-result",
+    "error_contains": "ready_for_verification decision cannot be automatic completion eligible"
+  },
+  {
+    "file": "policy-guidance-without-action.json",
+    "kind": "policy-decision",
+    "error_contains": "guidance decision requires one camera action"
+  },
+  {
+    "file": "policy-internal-error-automatic-eligible.json",
+    "kind": "policy-decision",
+    "error_contains": "internal_error decision cannot be automatic completion eligible"
+  },
+  {
+    "file": "failure-code-category-mismatch.json",
+    "kind": "failure-envelope",
+    "error_contains": "failure code PROCESSING_TIMEOUT requires category timeout"
+  },
+  {
+    "file": "policy-manual-required-with-camera-action.json",
+    "kind": "policy-decision",
+    "error_contains": "manual_required decision cannot include a camera action"
+  },
+  {
+    "file": "internal-error-with-camera-action.json",
+    "kind": "analysis-result",
+    "error_contains": "internal_error decision requires the unable action"
+  },
+  {
+    "file": "policy-user-complete-automatic-eligible.json",
+    "kind": "policy-decision",
+    "error_contains": "user_complete decision cannot be automatic completion eligible"
+  },
+  {
+    "file": "waiting-with-hidden-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "waiting result cannot include a serial candidate"
+  },
+  {
+    "file": "ready-with-timeout-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "ready_for_verification result cannot include a failure"
+  },
+  {
+    "file": "unsafe-retry-after-ms.json",
+    "kind": "failure-envelope",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "unsafe-retained-width.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "unsafe-retained-height.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "9007199254740991"
+  },
+  {
+    "file": "unsafe-deletion-attempt-count.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "deletion"
+  },
+  {
+    "file": "policy-unsupported-subject-without-unable.json",
+    "kind": "policy-decision",
+    "error_contains": "unsupported_subject decision requires the unable action"
+  },
+  {
+    "file": "policy-unsupported-input-without-unable.json",
+    "kind": "policy-decision",
+    "error_contains": "unsupported_input decision requires the unable action"
+  },
+  {
+    "file": "policy-internal-error-without-unable.json",
+    "kind": "policy-decision",
+    "error_contains": "internal_error decision requires the unable action"
+  },
+  {
+    "file": "guidance-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "guidance result cannot include a failure"
+  },
+  {
+    "file": "waiting-with-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "waiting result cannot include a failure"
+  },
+  {
+    "file": "ocr-uncertain-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "ocr_uncertain result requires a failure"
+  },
+  {
+    "file": "no-label-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "no_label result requires a failure"
+  },
+  {
+    "file": "ambiguous-label-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "ambiguous_label result requires a failure"
+  },
+  {
+    "file": "unsupported-subject-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "unsupported_subject result requires a failure"
+  },
+  {
+    "file": "unsupported-input-without-failure.json",
+    "kind": "analysis-result",
+    "error_contains": "unsupported_input result requires a failure"
+  },
+  {
+    "file": "ready-with-synchronized-display-rewrite.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate display must preserve raw OCR exactly"
+  },
+  {
+    "file": "ready-with-whitespace-only-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "candidate requires non-whitespace serial text"
+  },
+  {
+    "file": "user-complete-without-serial-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "user_complete status requires a non-null serial candidate"
+  }
+]
