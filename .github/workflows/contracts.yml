@@ -1,0 +1,46 @@
+name: contracts
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-conformance:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+          cache: npm
+      - name: Install pinned dependencies
+        run: |
+          uv sync --frozen --python 3.11
+          npm ci --ignore-scripts
+      - name: Python format, lint, and tests
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run pytest -q
+      - name: Contract generation, TypeScript, and fixtures
+        run: |
+          npm run contracts:check
+          npm run typecheck
+          npm run test:ts
+          npm run format:check
+      - name: Dependency and repository safety
+        run: |
+          npm audit --audit-level=moderate
+          uv run python scripts/check_sensitive_files.py
+          git diff --exit-code

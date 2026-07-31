@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physical-vision.local/contracts/v3.0/retained-photo-lifecycle.schema.json",
+  "title": "RetainedPhotoLifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "retained_photo_id",
+    "result_id",
+    "storage_key",
+    "content_fingerprint",
+    "media_type",
+    "width",
+    "height",
+    "capture_method",
+    "created_at",
+    "lifecycle",
+    "deletion"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "retained_photo_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage_key": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/\\\\])(?!.*\\.\\.).+$"
+    },
+    "content_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "media_type": {
+      "enum": ["image/jpeg", "image/png"]
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "capture_method": {
+      "enum": ["screen_capture", "smartphone_camera_capture"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lifecycle": {
+      "enum": ["retained", "deletion_pending"]
+    },
+    "deletion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requested_at",
+            "image_readable",
+            "metadata_readable",
+            "attempt_count"
+          ],
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "image_readable": {
+              "const": false
+            },
+            "metadata_readable": {
+              "const": false
+            },
+            "attempt_count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "const": "deletion_pending"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "deletion": {
+            "type": "object"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "deletion": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

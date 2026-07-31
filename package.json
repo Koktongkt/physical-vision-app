@@ -1,0 +1,22 @@
+{
+  "name": "physical-vision-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "contracts:generate": "node packages/contracts/scripts/generate-types.mjs",
+    "contracts:check": "node packages/contracts/scripts/generate-types.mjs --check",
+    "test:ts": "node --test packages/contracts/tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "json-schema-to-typescript": "15.0.4",
+    "prettier": "3.6.2",
+    "typescript": "5.9.2"
+  }
+}

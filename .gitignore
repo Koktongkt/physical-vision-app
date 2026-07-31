@@ -40,6 +40,8 @@ credentials/
 artifacts/
 outputs/
 generated/
+!packages/contracts/src/generated/
+!packages/contracts/src/generated/**
 reports/generated/
 
 # Databases and local runtime state

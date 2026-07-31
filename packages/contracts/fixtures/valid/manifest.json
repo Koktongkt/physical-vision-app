@@ -1,0 +1,38 @@
+[
+  {
+    "file": "vision-evidence-snapshot.json",
+    "kind": "vision-evidence-snapshot"
+  },
+  {
+    "file": "automatic-complete-result.json",
+    "kind": "analysis-result"
+  },
+  {
+    "file": "candidate-ready-result.json",
+    "kind": "analysis-result"
+  },
+  {
+    "file": "pet-strictly-above-result.json",
+    "kind": "analysis-result"
+  },
+  {
+    "file": "user-corrected-completion.json",
+    "kind": "completion"
+  },
+  {
+    "file": "failure-envelope.json",
+    "kind": "failure-envelope"
+  },
+  {
+    "file": "idempotency-conflict-failure.json",
+    "kind": "failure-envelope"
+  },
+  {
+    "file": "retained-photo.json",
+    "kind": "retained-photo-lifecycle"
+  },
+  {
+    "file": "deletion-pending-photo.json",
+    "kind": "retained-photo-lifecycle"
+  }
+]

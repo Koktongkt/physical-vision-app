@@ -1,0 +1,19 @@
+{
+  "schema_version": "3.0",
+  "retained_photo_id": "photo-001",
+  "result_id": "result-001",
+  "storage_key": "photos/photo-001.jpg",
+  "content_fingerprint": "sha256:fixture-001",
+  "media_type": "image/jpeg",
+  "width": 1920,
+  "height": 1080,
+  "capture_method": "smartphone_camera_capture",
+  "created_at": "2026-07-31T10:00:03Z",
+  "lifecycle": "deletion_pending",
+  "deletion": {
+    "requested_at": "2026-07-31T11:00:00Z",
+    "image_readable": true,
+    "metadata_readable": false,
+    "attempt_count": 1
+  }
+}

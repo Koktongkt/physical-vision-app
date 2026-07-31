@@ -1,0 +1,142 @@
+[
+  {
+    "file": "missing-required-evidence.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "quality"
+  },
+  {
+    "file": "probability-over-one.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "region-out-of-bounds.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "bounds"
+  },
+  {
+    "file": "text-outside-label.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "contained"
+  },
+  {
+    "file": "silent-repair.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "False"
+  },
+  {
+    "file": "candidate-mutation-flag.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "False"
+  },
+  {
+    "file": "unknown-support-auto.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "unknown-ood-auto.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "pet-exact-boundary-auto.json",
+    "kind": "analysis-result",
+    "error_contains": "strictly above PET"
+  },
+  {
+    "file": "high-confidence-failing-quality-gate.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "format-checksum-without-calibration.json",
+    "kind": "analysis-result",
+    "error_contains": "strictly above PET"
+  },
+  {
+    "file": "mutated-displayed-candidate.json",
+    "kind": "analysis-result",
+    "error_contains": "mutation"
+  },
+  {
+    "file": "mismatched-model-version.json",
+    "kind": "analysis-result",
+    "error_contains": "versions"
+  },
+  {
+    "file": "incompatible-policy-version.json",
+    "kind": "analysis-result",
+    "error_contains": "incompatible"
+  },
+  {
+    "file": "stale-evidence.json",
+    "kind": "analysis-result",
+    "error_contains": "passing evidence"
+  },
+  {
+    "file": "completion-with-business-false.json",
+    "kind": "analysis-result",
+    "error_contains": "business_complete"
+  },
+  {
+    "file": "automatic-with-failing-policy-gate.json",
+    "kind": "analysis-result",
+    "error_contains": "automatic_completion_eligible"
+  },
+  {
+    "file": "multiple-primary-actions.json",
+    "kind": "analysis-result",
+    "error_contains": "Additional"
+  },
+  {
+    "file": "camera-action-without-camera-referent.json",
+    "kind": "analysis-result",
+    "error_contains": "camera"
+  },
+  {
+    "file": "correction-without-supersession.json",
+    "kind": "completion",
+    "error_contains": "string"
+  },
+  {
+    "file": "ordinary-upload-retained.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "one of"
+  },
+  {
+    "file": "deletion-pending-readable.json",
+    "kind": "retained-photo-lifecycle",
+    "error_contains": "False"
+  },
+  {
+    "file": "idempotency-conflict-without-identity.json",
+    "kind": "failure-envelope",
+    "error_contains": "object"
+  },
+  {
+    "file": "probability-nan.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "finite"
+  },
+  {
+    "file": "probability-infinity.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "finite"
+  },
+  {
+    "file": "support-confidence-below-zero.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "minimum"
+  },
+  {
+    "file": "label-confidence-over-one.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "maximum"
+  },
+  {
+    "file": "mismatched-result-recommendation.json",
+    "kind": "analysis-result",
+    "error_contains": "recommendation"
+  }
+]

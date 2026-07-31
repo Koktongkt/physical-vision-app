@@ -21,4 +21,5 @@ A privacy-conscious, local-first application for extracting and evaluating physi
 
 ## Status
 
-Stage 0 bootstrap only. Do not treat placeholder directories as implemented components.
+Stage 1 executable contract v3.0 is implemented under `packages/contracts`; application,
+policy-engine, image-processing, persistence, API, and UI behavior remain placeholders.

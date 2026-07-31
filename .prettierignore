@@ -1,0 +1,5 @@
+docs/IMPLEMENTATION_SPEC.md
+docs/PROVENANCE.md
+docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md
+packages/contracts/fixtures/invalid/probability-infinity.json
+packages/contracts/fixtures/invalid/probability-nan.json
