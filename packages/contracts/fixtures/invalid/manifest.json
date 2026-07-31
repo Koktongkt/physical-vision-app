@@ -208,5 +208,15 @@
     "file": "uri-storage-key.json",
     "kind": "retained-photo-lifecycle",
     "error_contains": "storage_key"
+  },
+  {
+    "file": "user-source-non-user-status.json",
+    "kind": "analysis-result",
+    "error_contains": "user completion"
+  },
+  {
+    "file": "completed-with-capture-false.json",
+    "kind": "analysis-result",
+    "error_contains": "capture_complete"
   }
 ]

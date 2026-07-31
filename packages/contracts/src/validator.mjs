@@ -143,6 +143,13 @@ function validateResult(result) {
       fail(
         "analysis_result: automatic_ocr completion requires automatic_complete status",
       );
+    if (
+      ["user_corrected", "user_confirmed_ocr_unchanged"].includes(
+        completion.completion_source,
+      ) &&
+      result.status !== "user_complete"
+    )
+      fail("analysis_result: user completion requires user_complete status");
   }
   if (result.status === "automatic_complete") {
     if (completion === null || completion.completion_source !== "automatic_ocr")
@@ -188,6 +195,10 @@ function validateResult(result) {
   if (result.business_complete !== (completion !== null))
     fail(
       "analysis_result.business_complete: must exactly track immutable completion linkage",
+    );
+  if (completion !== null && !result.capture_complete)
+    fail(
+      "analysis_result.capture_complete: must be true for a completed result",
     );
   if (
     completion !== null &&

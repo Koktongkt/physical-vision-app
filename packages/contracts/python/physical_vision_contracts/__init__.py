@@ -186,6 +186,13 @@ def _validate_result(result: dict[str, Any]) -> None:
             raise ContractValidationError(
                 "analysis_result: automatic_ocr completion requires automatic_complete status"
             )
+        if (
+            completion["completion_source"] in {"user_corrected", "user_confirmed_ocr_unchanged"}
+            and result["status"] != "user_complete"
+        ):
+            raise ContractValidationError(
+                "analysis_result: user completion requires user_complete status"
+            )
     if result["status"] == "automatic_complete":
         if completion is None or completion["completion_source"] != "automatic_ocr":
             raise ContractValidationError(
@@ -219,6 +226,10 @@ def _validate_result(result: dict[str, Any]) -> None:
     if result["business_complete"] is not (completion is not None):
         raise ContractValidationError(
             "analysis_result.business_complete: must exactly track immutable completion linkage"
+        )
+    if completion is not None and not result["capture_complete"]:
+        raise ContractValidationError(
+            "analysis_result.capture_complete: must be true for a completed result"
         )
     if completion is not None and (
         completion["result_id"] != result["result_id"]

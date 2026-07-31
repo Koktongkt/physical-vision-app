@@ -28,13 +28,17 @@ Date: 2026-07-31. Commands were run in the isolated `feat/stage1-executable-cont
     - Each failed with `DID NOT RAISE` / `Missing expected exception` before its minimal semantic fix.
 12. `uv run pytest tests/python/test_sensitive_files.py -q`
     - Five common credential shapes failed detection before the tracked-file scanner was expanded.
+13. Python and Node fixture suites with `user-source-non-user-status.json`
+    - Failed with `DID NOT RAISE` / `Missing expected exception` before user-originated completion sources were required to use `status=user_complete`.
+14. Python and Node fixture suites with `completed-with-capture-false.json`
+    - Failed with `DID NOT RAISE` / `Missing expected exception` before every linked completion required `capture_complete=true`.
 
 ## GREEN observations
 
 - Snapshot tracer: `1 passed`.
 - Full automatic-completion tracer: `1 passed`.
-- Python contract fixture suite: `55 passed`; final full `pytest` suite: `61 passed`.
-- Node cross-language fixture suite: `53 passed`.
+- Python suite: `63 passed`.
+- Node cross-language fixture suite: `55 passed`.
 - Adversarial reproduction: five `REJECT` results and `UNSAFE_ACCEPT_COUNT=0`.
 - `npm run contracts:generate && npm run contracts:check && npm run typecheck`: generated types updated, drift check in sync, typecheck passed.
 - `npm audit --audit-level=moderate`: `found 0 vulnerabilities` after pinning AJV 8.20.0.
