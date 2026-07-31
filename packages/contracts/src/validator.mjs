@@ -65,6 +65,16 @@ function allGatesPass(gates) {
   return Object.values(gates).every(Boolean);
 }
 
+function sameRecord(left, right) {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) =>
+      Object.hasOwn(right, key) ? left[key] === right[key] : false,
+    )
+  );
+}
+
 function validatePolicy(decision) {
   const conjunction = allGatesPass(decision.gate_outcomes);
   if (decision.all_required_gates_pass !== conjunction) {
@@ -128,8 +138,10 @@ function validateResult(result) {
   const expectedRecommendation =
     decision.primary_action.kind === "none" ? null : decision.primary_action;
   if (
-    JSON.stringify(result.recommendation) !==
-    JSON.stringify(expectedRecommendation)
+    result.recommendation !== expectedRecommendation &&
+    (result.recommendation === null ||
+      expectedRecommendation === null ||
+      !sameRecord(result.recommendation, expectedRecommendation))
   )
     fail(
       "analysis_result.recommendation: must exactly mirror the single primary action",
@@ -146,6 +158,34 @@ function validateResult(result) {
       completion.snapshot_id !== snapshot.snapshot_id)
   )
     fail("analysis_result: completion provenance linkage mismatch");
+  if (completion !== null) {
+    if (
+      completion.raw_candidate !== snapshot.ocr.raw_string ||
+      completion.displayed_candidate !== snapshot.ocr.displayed_string
+    )
+      fail(
+        "analysis_result.completion: candidate provenance must remain verbatim",
+      );
+    if (
+      completion.whole_string_exact_probability_calibrated !==
+      snapshot.ocr.whole_string_exact_probability_calibrated
+    )
+      fail(
+        "analysis_result.completion: calibrated probability provenance mismatch",
+      );
+    if (!sameRecord(completion.gate_outcomes, decision.gate_outcomes))
+      fail("analysis_result.completion: gate provenance mismatch");
+    if (
+      completion.completion_source === "automatic_ocr" &&
+      !(
+        completion.raw_candidate === completion.displayed_candidate &&
+        completion.displayed_candidate === completion.final_serial
+      )
+    )
+      fail(
+        "analysis_result.completion: automatic final serial must remain verbatim",
+      );
+  }
 
   const candidate = result.serial_candidate;
   if (
@@ -163,8 +203,18 @@ function validateResult(result) {
     policy: decision.policy_version,
     threshold: decision.threshold_version,
   };
-  if (JSON.stringify(result.versions) !== JSON.stringify(expectedVersions))
+  if (!sameRecord(result.versions, expectedVersions))
     fail("analysis_result: stale or mismatched active versions");
+  if (
+    completion !== null &&
+    (completion.schema_version_used !== result.versions.schema ||
+      completion.model_version !== result.versions.model ||
+      completion.preprocess_version !== result.versions.preprocess ||
+      completion.calibration_version !== result.versions.calibration ||
+      completion.policy_version !== result.versions.policy ||
+      completion.threshold_version !== result.versions.threshold)
+  )
+    fail("analysis_result.completion: version provenance mismatch");
   if (
     snapshot.versions.policy_compatible !== decision.policy_version ||
     snapshot.versions.threshold_compatible !== decision.threshold_version

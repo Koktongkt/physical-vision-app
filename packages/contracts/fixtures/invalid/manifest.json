@@ -138,5 +138,15 @@
     "file": "mismatched-result-recommendation.json",
     "kind": "analysis-result",
     "error_contains": "recommendation"
+  },
+  {
+    "file": "automatic-completion-mutated-final.json",
+    "kind": "analysis-result",
+    "error_contains": "verbatim"
+  },
+  {
+    "file": "automatic-completion-probability-mismatch.json",
+    "kind": "analysis-result",
+    "error_contains": "probability"
   }
 ]

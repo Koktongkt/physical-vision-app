@@ -196,6 +196,31 @@ def _validate_result(result: dict[str, Any]) -> None:
         or completion["snapshot_id"] != snapshot["snapshot_id"]
     ):
         raise ContractValidationError("analysis_result: completion provenance linkage mismatch")
+    if completion is not None:
+        if (
+            completion["raw_candidate"] != snapshot["ocr"]["raw_string"]
+            or completion["displayed_candidate"] != snapshot["ocr"]["displayed_string"]
+        ):
+            raise ContractValidationError(
+                "analysis_result.completion: candidate provenance must remain verbatim"
+            )
+        if (
+            completion["whole_string_exact_probability_calibrated"]
+            != snapshot["ocr"]["whole_string_exact_probability_calibrated"]
+        ):
+            raise ContractValidationError(
+                "analysis_result.completion: calibrated probability provenance mismatch"
+            )
+        if completion["gate_outcomes"] != decision["gate_outcomes"]:
+            raise ContractValidationError("analysis_result.completion: gate provenance mismatch")
+        if completion["completion_source"] == "automatic_ocr" and not (
+            completion["raw_candidate"]
+            == completion["displayed_candidate"]
+            == completion["final_serial"]
+        ):
+            raise ContractValidationError(
+                "analysis_result.completion: automatic final serial must remain verbatim"
+            )
 
     candidate = result["serial_candidate"]
     if candidate is not None and (
@@ -217,6 +242,15 @@ def _validate_result(result: dict[str, Any]) -> None:
     }
     if versions != expected_versions:
         raise ContractValidationError("analysis_result: stale or mismatched active versions")
+    if completion is not None and (
+        completion["schema_version_used"] != versions["schema"]
+        or completion["model_version"] != versions["model"]
+        or completion["preprocess_version"] != versions["preprocess"]
+        or completion["calibration_version"] != versions["calibration"]
+        or completion["policy_version"] != versions["policy"]
+        or completion["threshold_version"] != versions["threshold"]
+    ):
+        raise ContractValidationError("analysis_result.completion: version provenance mismatch")
     if (
         snapshot["versions"]["policy_compatible"] != decision["policy_version"]
         or snapshot["versions"]["threshold_compatible"] != decision["threshold_version"]
