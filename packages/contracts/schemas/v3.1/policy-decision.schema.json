@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://physical-vision.local/contracts/v3.1/policy-decision.schema.json",
+  "title": "PolicyDecisionV31",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_version",
+    "decision_id",
+    "result_id",
+    "snapshot_id",
+    "policy_version",
+    "threshold_version",
+    "threshold_classification",
+    "auto_threshold_strictly_greater_than",
+    "status",
+    "primary_action",
+    "gate_outcomes",
+    "all_required_gates_pass",
+    "automatic_completion_eligible",
+    "candidate_ready",
+    "evaluated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.1"
+    },
+    "decision_version": {
+      "const": "1.1"
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "threshold_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "threshold_classification": {
+      "const": "PET"
+    },
+    "auto_threshold_strictly_greater_than": {
+      "const": 0.8
+    },
+    "status": {
+      "enum": [
+        "guidance",
+        "waiting",
+        "ready_for_verification",
+        "automatic_complete",
+        "user_complete",
+        "ocr_uncertain",
+        "no_label",
+        "ambiguous_label",
+        "unsupported_subject",
+        "unsupported_input",
+        "manual_required",
+        "internal_error"
+      ]
+    },
+    "primary_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "referent"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "camera_left",
+            "camera_right",
+            "camera_up",
+            "camera_down",
+            "camera_closer",
+            "camera_farther",
+            "camera_tilt_direct",
+            "camera_reduce_glare",
+            "manual",
+            "unable"
+          ]
+        },
+        "referent": {
+          "type": ["string", "null"],
+          "enum": ["camera", null]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "camera_left",
+                  "camera_right",
+                  "camera_up",
+                  "camera_down",
+                  "camera_closer",
+                  "camera_farther",
+                  "camera_tilt_direct",
+                  "camera_reduce_glare"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "referent": {
+                "const": "camera"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "referent": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gate_outcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "support",
+        "localization",
+        "quality",
+        "ocr_integrity",
+        "freshness",
+        "format_policy",
+        "deterministic_safety",
+        "no_unknown_blocking",
+        "version_compatibility"
+      ],
+      "properties": {
+        "support": {
+          "type": "boolean"
+        },
+        "localization": {
+          "type": "boolean"
+        },
+        "quality": {
+          "type": "boolean"
+        },
+        "ocr_integrity": {
+          "type": "boolean"
+        },
+        "freshness": {
+          "type": "boolean"
+        },
+        "format_policy": {
+          "type": "boolean"
+        },
+        "deterministic_safety": {
+          "type": "boolean"
+        },
+        "no_unknown_blocking": {
+          "type": "boolean"
+        },
+        "version_compatibility": {
+          "type": "boolean"
+        }
+      }
+    },
+    "all_required_gates_pass": {
+      "type": "boolean"
+    },
+    "automatic_completion_eligible": {
+      "type": "boolean"
+    },
+    "candidate_ready": {
+      "type": "boolean"
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

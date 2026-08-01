@@ -4,12 +4,12 @@ import json
 import math
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
-SCHEMA_ROOT = Path(__file__).parents[2] / "schemas" / "v3.0"
+SCHEMA_ROOT = Path(__file__).parents[2] / "schemas"
 SCHEMAS = {
     "vision-evidence-snapshot": "vision-evidence-snapshot.schema.json",
     "policy-decision": "policy-decision.schema.json",
@@ -57,6 +57,98 @@ class PolicyDecision(TypedDict):
     auto_threshold_strictly_greater_than: float
     status: str
     primary_action: dict[str, Any]
+    gate_outcomes: dict[str, bool]
+    all_required_gates_pass: bool
+    automatic_completion_eligible: bool
+    candidate_ready: bool
+    evaluated_at: str
+
+
+class CorrectionCandidate(TypedDict):
+    camera_action: Literal[
+        "camera_left",
+        "camera_right",
+        "camera_up",
+        "camera_down",
+        "camera_closer",
+        "camera_farther",
+        "camera_tilt_direct",
+        "camera_reduce_glare",
+    ]
+    reliability: Literal["reliable", "unreliable"]
+
+
+class SupportEvidenceV31(TypedDict):
+    state: Literal["pass", "fail", "unknown"]
+    reason: Literal["supported", "positively_unsupported", "unknown_or_ood"]
+    ood_state: Literal["in_distribution", "out_of_distribution", "unknown"]
+    probability_calibrated: float | None
+
+
+class LocalizationEvidenceV31(TypedDict):
+    state: Literal["pass", "fail", "unknown"]
+    reason: Literal["trustworthy", "no_label", "multiple_labels", "uncertain"]
+    label_region: NormalizedRegion | None
+    text_region: NormalizedRegion | None
+    text_containment: float | None
+    label_confidence: float | None
+
+
+class OcrEvidenceV31(TypedDict):
+    reason: Literal["usable", "unreadable", "ambiguous"]
+    raw_string: str
+    displayed_string: str
+    whole_string_exact_probability_calibrated: float | None
+    format_warning: str | None
+    checksum_warning: str | None
+    silent_repair_applied: Literal[False]
+    candidate_mutated: Literal[False]
+
+
+class VisionEvidenceSnapshotV31(TypedDict):
+    schema_version: Literal["3.1"]
+    snapshot_version: Literal["1.1"]
+    snapshot_id: str
+    result_id: str
+    observed_at: str
+    support: SupportEvidenceV31
+    localization: LocalizationEvidenceV31
+    quality: dict[str, dict[str, str]]
+    ocr: OcrEvidenceV31
+    correction_candidate: CorrectionCandidate | None
+    freshness: dict[str, Any]
+    versions: dict[str, str]
+
+
+class PolicyActionV31(TypedDict):
+    kind: Literal[
+        "none",
+        "camera_left",
+        "camera_right",
+        "camera_up",
+        "camera_down",
+        "camera_closer",
+        "camera_farther",
+        "camera_tilt_direct",
+        "camera_reduce_glare",
+        "manual",
+        "unable",
+    ]
+    referent: Literal["camera"] | None
+
+
+class PolicyDecisionV31(TypedDict):
+    schema_version: Literal["3.1"]
+    decision_version: Literal["1.1"]
+    decision_id: str
+    result_id: str
+    snapshot_id: str
+    policy_version: str
+    threshold_version: str
+    threshold_classification: Literal["PET"]
+    auto_threshold_strictly_greater_than: float
+    status: str
+    primary_action: PolicyActionV31
     gate_outcomes: dict[str, bool]
     all_required_gates_pass: bool
     automatic_completion_eligible: bool
@@ -155,14 +247,72 @@ def _reject_non_finite(value: Any, path: str = "$") -> None:
 
 
 def _validate_region_containment(snapshot: dict[str, Any]) -> None:
+    support = snapshot["support"]
+    if support.get("reason") == "supported" and not (
+        support["state"] == "pass" and support["ood_state"] == "in_distribution"
+    ):
+        raise ContractValidationError(
+            "support.reason: supported requires pass/in_distribution evidence"
+        )
+    if support.get("reason") == "positively_unsupported" and not (
+        support["state"] == "fail" and support["ood_state"] == "in_distribution"
+    ):
+        raise ContractValidationError(
+            "support.reason: positively_unsupported requires fail/in_distribution evidence"
+        )
     if (
-        snapshot["support"]["state"] == "pass"
-        and snapshot["support"]["probability_calibrated"] is None
+        support.get("reason") == "unknown_or_ood"
+        and support["state"] != "unknown"
+        and support["ood_state"] == "in_distribution"
+    ):
+        raise ContractValidationError(
+            "support.reason: unknown_or_ood requires unknown or OOD evidence"
+        )
+    localization_states = {
+        "trustworthy": "pass",
+        "no_label": "fail",
+        "multiple_labels": "fail",
+        "uncertain": "unknown",
+    }
+    localization = snapshot["localization"]
+    reason = localization.get("reason")
+    if reason is not None and localization["state"] != localization_states[reason]:
+        raise ContractValidationError(
+            "localization.reason: must agree with localization state"
+        )
+    ocr = snapshot["ocr"]
+    if ocr.get("reason") == "usable" and (
+        ocr["whole_string_exact_probability_calibrated"] is None
+        or not ocr["raw_string"].strip()
+    ):
+        raise ContractValidationError(
+            "ocr.reason: usable requires a non-empty calibrated OCR candidate"
+        )
+    if ocr.get("reason") == "unreadable" and (
+        ocr["whole_string_exact_probability_calibrated"] is not None
+        or ocr["raw_string"].strip()
+    ):
+        raise ContractValidationError(
+            "ocr.reason: unreadable requires empty uncalibrated OCR evidence"
+        )
+    if ocr.get("reason") == "ambiguous" and (
+        ocr["whole_string_exact_probability_calibrated"] is not None
+        or not ocr["raw_string"].strip()
+    ):
+        raise ContractValidationError(
+            "ocr.reason: ambiguous requires a non-empty uncalibrated OCR candidate"
+        )
+    if ocr.get("reason") is not None and ocr["displayed_string"] != ocr["raw_string"]:
+        raise ContractValidationError(
+            "ocr.reason: v3.1 OCR evidence must remain verbatim"
+        )
+    if (
+        support["state"] == "pass"
+        and support["probability_calibrated"] is None
     ):
         raise ContractValidationError(
             "support.probability_calibrated: pass requires measured probability evidence"
         )
-    localization = snapshot["localization"]
     label = localization["label_region"]
     text = localization["text_region"]
     if localization["state"] == "pass" and any(
@@ -207,6 +357,8 @@ def _all_gates_pass(gates: Mapping[str, bool]) -> bool:
 CAMERA_ACTIONS = {
     "camera_left",
     "camera_right",
+    "camera_up",
+    "camera_down",
     "camera_closer",
     "camera_farther",
     "camera_tilt_direct",
@@ -246,6 +398,15 @@ FAILURE_CATEGORIES = {
 
 def _validate_policy(decision: dict[str, Any]) -> None:
     _validate_utc_timestamp(decision["evaluated_at"], "evaluated_at")
+    action = decision["primary_action"]
+    if action["kind"] in CAMERA_ACTIONS and action["referent"] != "camera":
+        raise ContractValidationError(
+            "policy_decision: camera action requires the camera referent"
+        )
+    if action["kind"] == "none" and action["referent"] is not None:
+        raise ContractValidationError(
+            "policy_decision: none action requires a null referent"
+        )
     conjunction = _all_gates_pass(decision["gate_outcomes"])
     if decision["all_required_gates_pass"] is not conjunction:
         raise ContractValidationError(
@@ -727,22 +888,27 @@ def _validate_retained_photo(document: dict[str, Any]) -> None:
 def _load_schemas() -> tuple[dict[str, dict[str, Any]], Registry[Any]]:
     schemas: dict[str, dict[str, Any]] = {}
     resources: list[tuple[str, Resource[Any]]] = []
-    for kind, filename in SCHEMAS.items():
-        with (SCHEMA_ROOT / filename).open(encoding="utf-8") as handle:
-            schema = json.load(handle)
-        schemas[kind] = schema
-        resources.append((schema["$id"], Resource.from_contents(schema)))
+    for version in ("3.0", "3.1"):
+        for kind, filename in SCHEMAS.items():
+            schema_path = SCHEMA_ROOT / f"v{version}" / filename
+            if not schema_path.exists():
+                continue
+            with schema_path.open(encoding="utf-8") as handle:
+                schema = json.load(handle)
+            schemas[f"{kind}@{version}"] = schema
+            resources.append((schema["$id"], Resource.from_contents(schema)))
     return schemas, Registry().with_resources(resources)
 
 
 def validate_document(kind: str, document: Mapping[str, Any] | str | Path) -> dict[str, Any]:
     """Validate one contract document structurally and semantically."""
-    if kind not in SCHEMAS:
-        raise ContractValidationError(f"unknown contract kind: {kind}")
     payload = _load_document(document)
     _reject_non_finite(payload)
     schemas, registry = _load_schemas()
-    schema = schemas[kind]
+    version = payload.get("schema_version")
+    schema = schemas.get(f"{kind}@{version}")
+    if schema is None:
+        raise ContractValidationError(f"unsupported contract kind/version: {kind}@{version}")
     errors = sorted(
         Draft202012Validator(schema, format_checker=FormatChecker(), registry=registry).iter_errors(
             payload
@@ -772,11 +938,18 @@ def validate_document(kind: str, document: Mapping[str, Any] | str | Path) -> di
 __all__ = [
     "AnalysisResult",
     "Completion",
+    "CorrectionCandidate",
     "ContractValidationError",
     "FailureEnvelope",
     "NormalizedRegion",
+    "OcrEvidenceV31",
+    "PolicyActionV31",
     "PolicyDecision",
+    "PolicyDecisionV31",
     "RetainedPhotoLifecycle",
+    "LocalizationEvidenceV31",
+    "SupportEvidenceV31",
     "VisionEvidenceSnapshot",
+    "VisionEvidenceSnapshotV31",
     "validate_document",
 ]

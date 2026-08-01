@@ -6,7 +6,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const schemaRoot = path.resolve(directory, "../schemas/v3.0");
+const schemaRoot = path.resolve(directory, "../schemas");
 const schemaFiles = {
   "vision-evidence-snapshot": "vision-evidence-snapshot.schema.json",
   "policy-decision": "policy-decision.schema.json",
@@ -19,13 +19,20 @@ const schemaFiles = {
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 const schemas = new Map();
-for (const [kind, file] of Object.entries(schemaFiles)) {
-  const schema = JSON.parse(readFileSync(path.join(schemaRoot, file), "utf8"));
-  schemas.set(kind, schema);
-  ajv.addSchema(schema);
+for (const version of ["3.0", "3.1"]) {
+  for (const [kind, file] of Object.entries(schemaFiles)) {
+    const schemaPath = path.join(schemaRoot, `v${version}`, file);
+    try {
+      const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+      schemas.set(`${kind}@${version}`, schema);
+      ajv.addSchema(schema);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
 }
 const validators = new Map(
-  [...schemas].map(([kind, schema]) => [kind, ajv.getSchema(schema.$id)]),
+  [...schemas].map(([key, schema]) => [key, ajv.getSchema(schema.$id)]),
 );
 
 export class ContractValidationError extends Error {}
@@ -35,10 +42,61 @@ function fail(message) {
 }
 
 function validateRegionContainment(snapshot) {
+  const support = snapshot.support;
   if (
-    snapshot.support.state === "pass" &&
-    snapshot.support.probability_calibrated === null
+    support.reason === "supported" &&
+    !(support.state === "pass" && support.ood_state === "in_distribution")
   )
+    fail("support.reason: supported requires pass/in_distribution evidence");
+  if (
+    support.reason === "positively_unsupported" &&
+    !(support.state === "fail" && support.ood_state === "in_distribution")
+  )
+    fail(
+      "support.reason: positively_unsupported requires fail/in_distribution evidence",
+    );
+  if (
+    support.reason === "unknown_or_ood" &&
+    support.state !== "unknown" &&
+    support.ood_state === "in_distribution"
+  )
+    fail("support.reason: unknown_or_ood requires unknown or OOD evidence");
+  const localizationReasons = {
+    trustworthy: "pass",
+    no_label: "fail",
+    multiple_labels: "fail",
+    uncertain: "unknown",
+  };
+  if (
+    snapshot.localization.reason !== undefined &&
+    snapshot.localization.state !==
+      localizationReasons[snapshot.localization.reason]
+  )
+    fail("localization.reason: must agree with localization state");
+  const ocr = snapshot.ocr;
+  if (
+    ocr.reason === "usable" &&
+    (ocr.whole_string_exact_probability_calibrated === null ||
+      ocr.raw_string.trim() === "")
+  )
+    fail("ocr.reason: usable requires a non-empty calibrated OCR candidate");
+  if (
+    ocr.reason === "unreadable" &&
+    (ocr.whole_string_exact_probability_calibrated !== null ||
+      ocr.raw_string.trim() !== "")
+  )
+    fail("ocr.reason: unreadable requires empty uncalibrated OCR evidence");
+  if (
+    ocr.reason === "ambiguous" &&
+    (ocr.whole_string_exact_probability_calibrated !== null ||
+      ocr.raw_string.trim() === "")
+  )
+    fail(
+      "ocr.reason: ambiguous requires a non-empty uncalibrated OCR candidate",
+    );
+  if (ocr.reason !== undefined && ocr.displayed_string !== ocr.raw_string)
+    fail("ocr.reason: v3.1 OCR evidence must remain verbatim");
+  if (support.state === "pass" && support.probability_calibrated === null)
     fail(
       "support.probability_calibrated: pass requires measured probability evidence",
     );
@@ -90,6 +148,8 @@ function allGatesPass(gates) {
 const cameraActions = new Set([
   "camera_left",
   "camera_right",
+  "camera_up",
+  "camera_down",
   "camera_closer",
   "camera_farther",
   "camera_tilt_direct",
@@ -137,6 +197,11 @@ function sameRecord(left, right) {
 
 function validatePolicy(decision) {
   validateUtcTimestamp(decision.evaluated_at, "evaluated_at");
+  const action = decision.primary_action;
+  if (cameraActions.has(action.kind) && action.referent !== "camera")
+    fail("policy_decision: camera action requires the camera referent");
+  if (action.kind === "none" && action.referent !== null)
+    fail("policy_decision: none action requires a null referent");
   const conjunction = allGatesPass(decision.gate_outcomes);
   if (decision.all_required_gates_pass !== conjunction) {
     fail(
@@ -633,8 +698,9 @@ function validateRetainedPhoto(document) {
 }
 
 export function validateDocument(kind, document) {
-  const validator = validators.get(kind);
-  if (!validator) fail(`unknown contract kind: ${kind}`);
+  const version = document?.schema_version;
+  const validator = validators.get(`${kind}@${version}`);
+  if (!validator) fail(`unsupported contract kind/version: ${kind}@${version}`);
   if (!validator(document)) {
     fail(JSON.stringify(validator.errors));
   }

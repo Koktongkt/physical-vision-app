@@ -1,10 +1,12 @@
-# Executable contract v3.0
+# Executable contracts v3.0 and v3.1
 
-`schemas/v3.0/*.schema.json` are the language-neutral authority and use JSON Schema Draft 2020-12. The schemas separately version evidence, policy decisions, analysis results, completions/supersession, failures, and retained-photo deletion lifecycle records. Unknown fields are rejected.
+`schemas/v3.0/*.schema.json` remain the complete Stage 1 language-neutral authority. `schemas/v3.1` is the additive thin Stage 2 policy boundary containing only evidence 1.1 and policy-decision 1.1. Both use JSON Schema Draft 2020-12 and reject unknown fields.
 
 ## Authority and compatibility
 
-The contract major/minor is `3.0`; component document versions are `1.0`. Consumers must reject unsupported major versions. Compatible additive changes require a new minor contract directory and regenerated consumers. Completion semantics, status meaning, evidence gates, retention, or coordinate conventions require the specification change-control process before a schema major/minor change.
+The preserved complete contract is `3.0`; its component document versions remain `1.0`. Contract `3.1` adds typed support/localization/OCR reasons, an explicit nullable reliability-qualified correction candidate, and `camera_up`/`camera_down` policy actions. Consumers must reject unsupported versions. Python and Node validators dispatch by declared `schema_version` and accept both supported versions. Consumers opt into v3.1 and regenerate its bindings; they must not silently mix v3.1 components into the v3.0 outer result. Completion semantics, status meaning, evidence gates, retention, or coordinate conventions require specification change control.
+
+The v3.1 correction candidate is evidence only. `reliable` permits deterministic policy consideration but does not choose the final action; `unreliable` or `null` must not be turned into guessed directional guidance. The policy remains sole owner of final status/action selection and emits no prose or overlays.
 
 JSON Schema is the structural interchange authority: it enforces structure, enums, ranges, required fields, and conditional shapes. The normative cross-field semantic rules are this document's rule list plus the shared valid/invalid fixture manifests. `physical_vision_contracts.validate_document` and `src/validator.mjs` must implement that same corpus identically for normalized containment, immutable identity/version linkage, freshness, gate conjunction, strict PET comparison, verbatim candidates, completion status/source/capture linkage, and supersession. A change to either semantic validator is incomplete until the same fixture proves both language paths. These validators do not choose guidance or run model inference. The later deterministic policy package consumes validated evidence and produces a separate decision.
 

@@ -1,0 +1,47 @@
+[
+  {
+    "file": "invalid-support-reason.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "reason"
+  },
+  {
+    "file": "invalid-localization-reason.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "reason"
+  },
+  {
+    "file": "invalid-ocr-reason.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "reason"
+  },
+  {
+    "file": "invalid-correction-reliability.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "reliability"
+  },
+  {
+    "file": "invalid-correction-action.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "camera_action"
+  },
+  {
+    "file": "policy-camera-up-without-referent.json",
+    "kind": "policy-decision",
+    "error_contains": "camera"
+  },
+  {
+    "file": "inconsistent-support-reason.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "support.reason"
+  },
+  {
+    "file": "inconsistent-localization-reason.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "localization.reason"
+  },
+  {
+    "file": "inconsistent-ocr-reason.json",
+    "kind": "vision-evidence-snapshot",
+    "error_contains": "ocr.reason"
+  }
+]

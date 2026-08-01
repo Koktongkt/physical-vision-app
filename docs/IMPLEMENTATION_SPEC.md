@@ -2,9 +2,9 @@
 
 **Product:** Iterative still-photo-guided serial-label capture MVP  
 **Specification status:** Approved for localhost-only, single-user personal prototype implementation and evaluation with G1–G8 and A1–A15/D1–D7 decisions incorporated; **not approved for production implementation, distribution of restricted model code/weights, remote availability, operational support, or launch**  
-**Version:** 1.4  
-**Last amended:** 2026-07-26  
-**Normative source tasks:** `t_edafa288`, `t_9db4b5de`, `t_3bb8d5b2`, `t_e3187d49`, `t_95ff3002`, `t_88bc938f`, `t_f9f6d927`, `t_9d8f876a`, `t_f8132754`, `t_fb42469a`
+**Version:** 1.5
+**Last amended:** 2026-08-01
+**Normative source tasks:** `t_edafa288`, `t_9db4b5de`, `t_3bb8d5b2`, `t_e3187d49`, `t_95ff3002`, `t_88bc938f`, `t_f9f6d927`, `t_9d8f876a`, `t_f8132754`, `t_fb42469a`, `t_afa75b47`, `t_577c72e6`
 
 ## 0. How to read this specification
 
@@ -185,16 +185,20 @@ OpenCV is the geometry and deterministic-measurement foundation, not an assumed 
 ### 5.4 Inference/evidence adapter
 
 - Run a data-driven localization bake-off: classical barcode/contour baseline versus lightweight box detector versus lightweight instance segmenter. Select by full-label/text containment, unsupported false positives, guidance safety, OCR effect, CPU/GPU resource use, and latency—not generic mAP alone. Masks are candidates for curved visible labels, not an assumed winner.
-- Produce support/localization/OOD evidence, rectified OCR candidates, per-sequence calibrated exact-string estimates, ambiguity evidence, and raw quality features. Keep label, OCR, action, and quality confidence separate.
+- Produce support/localization/OOD evidence, rectified OCR candidates, per-sequence calibrated exact-string estimates, ambiguity evidence, and raw quality features. Contract v3.1 emits explicit support (`supported | positively_unsupported | unknown_or_ood`), localization (`trustworthy | no_label | multiple_labels | uncertain`), and OCR (`usable | unreadable | ambiguous`) reasons. Keep label, OCR, action, and quality confidence separate.
+- MAY emit one typed camera correction candidate only when backed by an explicit reliability classification. This is measurement/evidence, not a policy decision; it contains no prose and does not authorize completion or force an action.
 - Begin with deterministic quality features. Add MobileNetV3/EfficientNet-Lite-class support/OOD/ambiguity heads only if ablation improves policy-level outcomes; do not begin with a monolithic multitask network.
 - Preserve exact model/weight/dependency/calibration versions, validate ranges/schema, and emit unknown where evidence is absent. Never choose UI wording or perform completion.
 
 ### 5.5 Deterministic policy engine
 
 - Consume an immutable, schema-validated `VisionEvidenceSnapshot` plus optional versioned, policy-eligible bounded history.
-- Apply cost-aware safety ordering, hard vetoes, freshness, support, localization, quality, OCR-integrity, format-warning, calibrated-readiness, and tie-break rules. Unknown blocks automatic completion.
+- For the thin B04 implementation, apply deterministic ordering and vetoes only to the validated current snapshot fields needed to select one status and, when safe, exactly one camera action. A directional action may be derived only from a `reliable` typed correction candidate; the policy MUST NOT guess direction. Unknown or unreliable correction evidence abstains from directional guidance.
+- Apply the existing strict PET, all-gates, freshness, support, localization, OCR-integrity, verbatim/no-repair, status/action, and unknown-veto invariants. Unknown blocks automatic completion.
 - Return one immutable `PolicyDecision`: exactly one next-photo action, candidate readiness, automatic-completion eligibility, manual/unsupported, or terminal failure.
-- Use fixed camera-referent wording keys; preserve image-space correction separately. Replay identical snapshot/config/version byte-for-byte deterministically.
+- The policy is the sole owner of final status/action selection. It emits typed actions, including `camera_up` and `camera_down`, but no model-authored wording, UI prose, or overlay rendering. Preserve correction evidence separately.
+
+Admission, privacy, resource, dependency, session, transport, retention, replay-flow enforcement, completion creation, user correction, and supersession are outside thin B04. Those obligations remain assigned to B05–B07 and B13–B17; capture provenance remains in the outer source/result boundary. Exhaustive replay/process, system, adversarial/permutation, UI, and physical-guidance qualification remains at those later gates. This is implementation sequencing, not evidence that the policy or product is validated.
 
 ### 5.6 Completion/business service
 
@@ -309,10 +313,20 @@ Content-free security/business event containing opaque actor/task/session/result
 
 ### 8.1 Common conventions
 
-- `schema_version` is `major.minor`; this amendment advances the illustrative contract to `3.0` because completion semantics changed.
+- `schema_version` is `major.minor`. Executable v3.0 remains the complete Stage 1 contract; v3.1 is the additive thin evidence/policy boundary described below.
 - RFC 3339 UTC timestamps; finite `[0,1]` scores; unavailable evidence is `null`/`unknown`, never fabricated zero.
 - Canonical coordinates use top-left origin, x right, y down, normalized `[0,1]`; Pillow EXIF transpose occurs once and display transforms are client-only.
 - Raw/displayed OCR strings are verbatim. Format/checksum fields are warning evidence only.
+
+#### 8.1.1 Executable contract v3.1 amendment and compatibility
+
+- Contract v3.1 adds only `VisionEvidenceSnapshot` 1.1 and `PolicyDecision` 1.1. It does not revise the v3.0 analysis-result, completion/supersession, failure, retained-photo, session, transport, or persistence contracts.
+- `VisionEvidenceSnapshot` 1.1 requires the typed reason distinctions in §5.4 and one explicit nullable `correction_candidate`. A non-null candidate contains only a camera-action enum and `reliability = reliable | unreliable`. Reliability permits policy consideration; it is not an action decision. Unknown, null, or unreliable evidence MUST NOT be converted into a guessed direction.
+- `PolicyDecision` 1.1 adds `camera_up` and `camera_down` to the existing camera-referent action enum. Status/action rules remain unchanged: guidance requires exactly one camera action, completed/candidate-ready/action-free statuses retain `none`, manual requires `manual`, and unsupported/internal outcomes require `unable`.
+- Compatibility is additive and explicit. The v3.0 schema directory and fixtures remain immutable; Python and Node validators dispatch by the document's declared version and continue accepting v3.0. Consumers opt into v3.1 evidence/policy documents and regenerate the v3.1 bindings; they MUST NOT silently up-cast, down-cast, or embed a v3.1 component in the v3.0 outer result envelope. A later B13/B14 contract amendment owns outer-envelope migration.
+- No v3.1 field weakens strict `>0.80` PET qualification, all-gates conjunction, freshness/version checks, unknown veto, verbatim/no-repair behavior, immutable identity linkage, completion provenance, correction/supersession, or retention rules. Capture provenance remains in the existing outer source/result boundary and is not duplicated into B04 inputs.
+
+The v3.1 prerequisite is intentionally the smallest contract that enables a useful pure B04 policy. It makes no claim that model evidence, correction reliability, physical guidance, the PET, or the localhost product has passed representative qualification.
 
 ### 8.2 RI HTTP surface
 
@@ -537,8 +551,8 @@ These omissions are explicit backlog work, not implicit approvals.
 **Gate:** no stale mandatory-confirmation invariant; exact PET qualification, Ultralytics non-distribution, camera referent, replay exclusions, and open G2/resource/licence decisions are traceable.
 
 ### Phase 1 — Contract and deterministic skeleton
-**Work:** executable `VisionEvidenceSnapshot`, `PolicyDecision`, completion/supersession schemas; fake evidence; pure policy; session/idempotency; candidate/automatic/user UI states.  
-**Gate:** strict `>0.80`, all-gate conjunction, unknown veto, version/freshness rejection, deterministic replay, completion provenance and correction supersession pass without model runtime.
+**Work:** executable contracts plus a thin pure current-snapshot policy. Session/idempotency, completion creation, candidate/automatic/user UI states, replay-flow integration, and supersession remain later integration work.
+**Gate:** v3.0 preserves strict `>0.80`, all-gate conjunction, unknown veto, version/freshness rejection, completion provenance, and correction supersession. The v3.1 prerequisite adds typed reasons, reliability-qualified correction evidence, and camera up/down action validity without model runtime.
 
 ### Phase 2 — Safe decode and OpenCV baseline
 **Work:** Pillow bounded decode/EXIF-once canonicalization; OpenCV geometry, ROI/rectification, deterministic quality evidence and overlays; Tesseract/classical localization baseline.  
@@ -562,14 +576,14 @@ These omissions are explicit backlog work, not implicit approvals.
 
 ## 15. Dependency-ordered implementation backlog
 
-All items are planned; no application code is implemented by this amendment.
+The table defines dependency and acceptance ownership. Completion status is tracked on the implementation board rather than inferred from this specification.
 
 | ID | Backlog item | Depends on | Output / acceptance |
 |---|---|---|---|
 | B01 | Freeze A1–A15/D1–D7 decision, terminology, PET, replay and licence register | — | Versioned provenance and unresolved evidence decisions complete. |
 | B02 | Define resource-observability/non-exhaustion plan for RTX 5070 12 GB/32 GB RAM and unknown CPU | B01 | Bounded CPU/GPU/RAM/VRAM/disk/thermal instrumentation and provisional budgets. |
 | B03 | Refine executable schema v3.0 for evidence, decision, completion and supersession | B01 | Positive/negative fixtures cover versions, freshness, unknown veto, strict PET and no silent repair. |
-| B04 | Implement pure deterministic cost-aware one-action policy against frozen snapshots | B03 | Ordering/veto/replay/candidate/automatic/manual tests pass. |
+| B04 | Implement the thin pure deterministic one-action policy against validated v3.1 current snapshots | B03 plus v3.1 prerequisite | Typed support/localization/OCR reasons, hard vetoes, strict existing PET/gates, and one reliable correction-derived action produce one deterministic status/action. No admission/session/transport/privacy/resource/dependency/retention/completion/supersession/UI/physical/replay-flow implementation. Exhaustive and integrated qualification remains at B13–B18. |
 | B05 | Design UI state machine with camera-only wording and visible automatic provenance/review | B01, B03 | Candidate, guidance, automatic, user correction and supersession states reviewed. |
 | B06 | Implement Pillow bounded JPEG/PNG decode and EXIF-once canonical contract | B02, B03 | Malformed/decompression/orientation/resource fixtures pass. |
 | B07 | Implement OpenCV geometry, ROI/rectification, raw quality evidence and overlays | B06 | Coordinate round trip and raw measurement fixtures pass. |
@@ -601,6 +615,8 @@ All items are planned; no application code is implemented by this amendment.
 - `t_9d8f876a` — personal-test amendment: approved G5 localhost/single-user/no-auth deployment, G6 camera-origin linked local retention/manual deletion, G7 best-effort measured processing without an attempt ceiling or product upload-size cap, and G8 English visual overlay/text guidance without a formal accessibility target.
 - `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md` and task `t_f8132754` — evidence-backed hybrid pipeline, technology candidates, contracts, licensing risks, grouped evaluation/calibration/statistical framework, resource constraints, and dependency-ordered experiments.
 - `t_fb42469a` — Product Owner normative amendment approving A1–A15/D1–D7, the provisional strict `>0.80` automatic-completion rule, camera referent, replay qualification, and supersession semantics.
+- `t_afa75b47` — Product Owner approval for the Stage 2 sequence: smallest additive contract v3.1, thin pure B04, essential tests now, and exhaustive/system/physical/UI obligations at their existing later gates.
+- `t_577c72e6` — implementation and executable-fixture trace for contract v3.1 and this v1.5 amendment.
 
 ### 16.2 Decision-to-source mapping
 
@@ -610,6 +626,7 @@ All items are planned; no application code is implemented by this amendment.
 | Hybrid Pillow/OpenCV/learned-localization/rectified-OCR pipeline and ONNX Runtime baseline | `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md`, `t_f8132754`, approved by `t_fb42469a` |
 | Localization/OCR/quality-head bake-offs, permissive alternatives, Ultralytics restriction and licence checks | `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md`, `t_f8132754`, `t_fb42469a` |
 | Separate `VisionEvidenceSnapshot`/`PolicyDecision`, deterministic one-action safety boundary | `t_9db4b5de`, `t_3bb8d5b2`, refined by research/task `t_f8132754`, approved by `t_fb42469a` |
+| Thin B04 boundary; typed support/localization/OCR reasons; reliability-qualified correction candidate; `camera_up`/`camera_down`; additive v3.0→v3.1 compatibility | approved by Product Owner in `t_afa75b47`, implemented/traced by `t_577c72e6` |
 | Optional automatic completion under strict `>0.80` PET; candidate/user fallback; no silent repair; supersession | `t_fb42469a`, superseding completion invariants in all prior source tasks |
 | Grouped datasets, calibration/CIs, locked test/no post-hoc tuning, localization/quality/OOD/guidance/OCR/system/ablation metrics | G2 in `t_88bc938f`, expanded by research/task `t_f8132754`, approved by `t_fb42469a` |
 | Full local serial/evidence retention until manual pair deletion; replay provenance; camera-only wording | `t_9d8f876a` as amended by `t_fb42469a` |
@@ -633,12 +650,13 @@ All items are planned; no application code is implemented by this amendment.
 
 ### 17.1 Amendment history
 
+- **v1.5 — 2026-08-01 — Product Owner — decision `t_afa75b47`, implementation `t_577c72e6`:** Affected §§5.4–5.5, 8.1, 14–17. Approved the smallest additive executable contract v3.1 prerequisite and narrowed B04 to the pure current-snapshot policy core. Added typed support/localization/OCR reasons, an explicit nullable reliability-qualified camera correction candidate, and `camera_up`/`camera_down` policy actions without prose or overlays. Preserved v3.0 and every Stage 1 PET/gate/unknown/verbatim/status/action/linkage invariant. Compatibility impact: validators continue accepting declared v3.0 documents; v3.1 consumers explicitly opt into and regenerate only the evidence/policy 1.1 bindings; outer result/completion migration remains B13/B14 work, with no silent component mixing. Deferred admission, privacy, resources, dependencies, session/transport, retention, replay-flow integration, completion/correction/supersession, UI, exhaustive testing, and physical qualification to their existing backlog gates. This simplification is sequencing only, not a validated policy, physical-guidance, PET, or product claim.
 - **v1.4 — 2026-07-26 — task `t_fb42469a`:** Incorporated Product Owner approvals A1–A15/D1–D7 from `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md` / `t_f8132754`. Approved the bounded Pillow/OpenCV hybrid pipeline, localization/quality/OCR bake-offs, conditional learned heads, PP-OCRv6 benchmark qualification, ONNX Runtime CPU baseline, deterministic evidence/policy boundary, grouped locked evaluation framework, resource observability, replay qualification, camera-only wording, licensing restrictions, and full local evidence/completion supersession. Superseded universal never-machine-accept/mandatory-confirmation wording: automatic completion is permitted only when the calibrated whole-string estimate is strictly greater than the versioned PET `0.80` and every required current-attempt gate passes with no unknown/blocker; otherwise candidate/user/guidance paths apply. The PET is not a validated or production claim and remains subject to G2 replacement/reaffirmation.
 - **v1.3 — 2026-07-23 — task `t_9d8f876a`:** Resolved G5–G8 for a one-user visual personal test. Fixed deployment to same-machine localhost with no authentication, accounts, tenancy, anonymous remote access, production availability, or support commitment. Approved local retention of screen-capture and smartphone-camera photos together with linked analysis and model/policy/preprocessing/calibration/schema versions until manual pair deletion; ordinary uploads remain ephemeral. Set best-effort processing with measured latency, no formal SLO and no guidance-attempt ceiling, while preserving terminal/user exits and provisional pre-decode/decompression/local-storage guards; model input size is not a product upload cap. Limited the prototype to English visual guidance with on-image overlays/arrows and physical direction/angle/distance/lighting text, no formal accessibility target, and still capture rather than continuous guidance. Advanced the additive illustrative result schema to v2.1. Preserved the then-current G2 locked-evidence and mandatory-confirmation invariants; those completion invariants are historically accurate but superseded by v1.4.
 - **v1.2 — 2026-07-20 — task `t_f9f6d927`:** Amended G3 to an iterative still-photo workflow. The MVP starts with one JPEG/JPG or PNG upload; a sufficient photo, including the first, may set `capture_complete=true` only to present an editable `serial_candidate` for explicit verification. Insufficient evidence produces one concrete next-photo movement/angle/lighting/quality action and another upload invitation, repeated as needed. Removed the hard two-frame agreement requirement, deferred continuous live-camera guidance to a later phase, and advanced the illustrative API/result contract to v2 because completion semantics, session mode, sequencing, and endpoints changed. Preserved the then-current never-machine-accept/mandatory-confirmation invariant (superseded by v1.4), G2 evidence requirements, browser-only scope, and unresolved G5–G8.
 - **v1.1 — 2026-07-20 — task `t_88bc938f`:** Incorporated confirmed G1–G4 decisions. Narrowed the object scope to plastic water bottles with ordinary printed wraparound barcode-bearing labels; defined the barcode as localization evidence rather than the final decoded value; made OCR a user-editable, then-never-machine-accepted `serial_candidate` (completion rule superseded by v1.4); approved the G2 locked-study protocol while withholding numeric claims; ratified the then-current single-upload `capture_complete=false` rule (superseded by v1.2); and established a browser-only desktop/mobile platform scope including iOS Safari and JPEG/PNG uploads. G5–G8 remain unresolved as stated.
 
-Downstream work MAY implement the localhost personal-test phases under this v1.4 architecture and PET while G2, executable-schema refinement, final model/licence selection, and resource budgets remain open, provided provisional values are never represented as validated. Ultralytics MUST NOT be distributed. Production, remote/multi-user, support/SLO, accessibility/localization, backup/export/review/training reuse, liveness, continuous-camera, or broader licensing decisions require a later amendment. Production launch remains unapproved.
+Downstream work MAY implement the localhost personal-test phases under this v1.5 architecture and PET while G2, executable-schema refinement beyond the thin v3.1 boundary, final model/licence selection, and resource budgets remain open, provided provisional values are never represented as validated. Ultralytics MUST NOT be distributed. Production, remote/multi-user, support/SLO, accessibility/localization, backup/export/review/training reuse, liveness, continuous-camera, or broader licensing decisions require a later amendment. Production launch remains unapproved.
 
 This amendment’s automatic-completion exception is narrow: only the versioned §3.4 conjunction may create `final_serial` automatically. No guessed, silently corrected, uncalibrated, stale, unsupported, unknown, or gate-incomplete serial may be auto-submitted.
 

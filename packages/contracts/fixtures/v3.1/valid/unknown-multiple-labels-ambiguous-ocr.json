@@ -1,0 +1,80 @@
+{
+  "schema_version": "3.1",
+  "snapshot_version": "1.1",
+  "snapshot_id": "snapshot-unknown-multiple-labels-ambiguous-ocr",
+  "result_id": "result-unknown-multiple-labels-ambiguous-ocr",
+  "observed_at": "2026-08-01T10:00:00Z",
+  "support": {
+    "state": "unknown",
+    "reason": "unknown_or_ood",
+    "ood_state": "unknown",
+    "probability_calibrated": null
+  },
+  "localization": {
+    "state": "fail",
+    "reason": "multiple_labels",
+    "label_region": null,
+    "text_region": null,
+    "text_containment": null,
+    "label_confidence": null
+  },
+  "quality": {
+    "crop": {
+      "state": "pass"
+    },
+    "scale": {
+      "state": "pass"
+    },
+    "center": {
+      "state": "pass"
+    },
+    "blur": {
+      "state": "pass"
+    },
+    "exposure": {
+      "state": "pass"
+    },
+    "contrast": {
+      "state": "pass"
+    },
+    "glare": {
+      "state": "pass"
+    },
+    "occlusion": {
+      "state": "pass"
+    },
+    "perspective": {
+      "state": "pass"
+    },
+    "ocr_integrity": {
+      "state": "pass"
+    },
+    "overall": {
+      "state": "pass"
+    }
+  },
+  "ocr": {
+    "reason": "ambiguous",
+    "raw_string": "SYNTH-3?",
+    "displayed_string": "SYNTH-3?",
+    "whole_string_exact_probability_calibrated": null,
+    "format_warning": null,
+    "checksum_warning": null,
+    "silent_repair_applied": false,
+    "candidate_mutated": false
+  },
+  "correction_candidate": null,
+  "freshness": {
+    "is_current_attempt": true,
+    "age_ms": 10,
+    "max_age_ms": 30000
+  },
+  "versions": {
+    "model": "model-id",
+    "preprocess": "prep-id",
+    "calibration": "cal-id",
+    "schema": "3.1",
+    "policy_compatible": "policy-v31",
+    "threshold_compatible": "auto-exact-pet-v1"
+  }
+}
