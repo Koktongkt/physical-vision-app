@@ -23,9 +23,23 @@ export interface PolicyDecisionV31 {
     | "unsupported_input"
     | "manual_required"
     | "internal_error";
-  primary_action: {
-    [k: string]: unknown;
-  };
+  primary_action:
+    | {
+        kind:
+          | "camera_left"
+          | "camera_right"
+          | "camera_up"
+          | "camera_down"
+          | "camera_closer"
+          | "camera_farther"
+          | "camera_tilt_direct"
+          | "camera_reduce_glare";
+        referent: "camera";
+      }
+    | {
+        kind: "none" | "manual" | "unable";
+        referent: null;
+      };
   gate_outcomes: {
     support: boolean;
     localization: boolean;

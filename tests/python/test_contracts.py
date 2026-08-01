@@ -68,27 +68,6 @@ def test_python_v31_types_expose_every_schema_required_field(
     assert required == contract_type.__required_keys__
 
 
-def test_v31_preserves_v30_policy_action_referent_conditionals() -> None:
-    v30 = json.loads(
-        (ROOT / "packages/contracts/schemas/v3.0/policy-decision.schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    v31 = json.loads(
-        (ROOT / "packages/contracts/schemas/v3.1/policy-decision.schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    action30 = v30["properties"]["primary_action"]
-    action31 = v31["properties"]["primary_action"]
-    expected_conditionals = json.loads(json.dumps(action30["allOf"]))
-    camera_actions = expected_conditionals[0]["if"]["properties"]["kind"]["enum"]
-    camera_actions[2:2] = ["camera_up", "camera_down"]
-
-    assert action31["type"] == action30["type"]
-    assert action31["allOf"] == expected_conditionals
-
-
 @pytest.mark.parametrize(
     ("fixture_name", "raw_string"),
     [

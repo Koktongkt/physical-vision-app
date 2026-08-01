@@ -72,69 +72,39 @@
       ]
     },
     "primary_action": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "referent"],
-      "properties": {
-        "kind": {
-          "enum": [
-            "none",
-            "camera_left",
-            "camera_right",
-            "camera_up",
-            "camera_down",
-            "camera_closer",
-            "camera_farther",
-            "camera_tilt_direct",
-            "camera_reduce_glare",
-            "manual",
-            "unable"
-          ]
-        },
-        "referent": {
-          "type": ["string", "null"],
-          "enum": ["camera", null]
-        }
-      },
-      "allOf": [
+      "oneOf": [
         {
-          "if": {
-            "properties": {
-              "kind": {
-                "enum": [
-                  "camera_left",
-                  "camera_right",
-                  "camera_up",
-                  "camera_down",
-                  "camera_closer",
-                  "camera_farther",
-                  "camera_tilt_direct",
-                  "camera_reduce_glare"
-                ]
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "referent": {
-                "const": "camera"
-              }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "referent"],
+          "properties": {
+            "kind": {
+              "enum": [
+                "camera_left",
+                "camera_right",
+                "camera_up",
+                "camera_down",
+                "camera_closer",
+                "camera_farther",
+                "camera_tilt_direct",
+                "camera_reduce_glare"
+              ]
+            },
+            "referent": {
+              "const": "camera"
             }
           }
         },
         {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "none"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "referent": {
-                "type": "null"
-              }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "referent"],
+          "properties": {
+            "kind": {
+              "enum": ["none", "manual", "unable"]
+            },
+            "referent": {
+              "type": "null"
             }
           }
         }

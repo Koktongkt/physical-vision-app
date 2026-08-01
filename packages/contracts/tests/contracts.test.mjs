@@ -20,15 +20,7 @@ test("generated exports include the v3.1 policy boundary", async () => {
   assert.match(generatedIndex, /PolicyDecisionV31/);
 });
 
-test("v3.1 preserves v3.0 policy action referent conditionals and adds vertical actions", async () => {
-  const v30 = JSON.parse(
-    await readFile(
-      path.resolve(
-        "packages/contracts/schemas/v3.0/policy-decision.schema.json",
-      ),
-      "utf8",
-    ),
-  );
+test("v3.1 policy actions retain typed referent validity", async () => {
   const v31 = JSON.parse(
     await readFile(
       path.resolve(
@@ -37,28 +29,25 @@ test("v3.1 preserves v3.0 policy action referent conditionals and adds vertical 
       "utf8",
     ),
   );
-  const action30 = v30.properties.primary_action;
   const action31 = v31.properties.primary_action;
 
-  assert.equal(action31.type, action30.type);
-  assert.deepEqual(action31.allOf, [
-    {
-      ...action30.allOf[0],
-      if: {
-        properties: {
-          kind: {
-            enum: [
-              ...action30.allOf[0].if.properties.kind.enum.slice(0, 2),
-              "camera_up",
-              "camera_down",
-              ...action30.allOf[0].if.properties.kind.enum.slice(2),
-            ],
-          },
-        },
-      },
-    },
-    action30.allOf[1],
+  assert.deepEqual(action31.oneOf[0].properties.kind.enum, [
+    "camera_left",
+    "camera_right",
+    "camera_up",
+    "camera_down",
+    "camera_closer",
+    "camera_farther",
+    "camera_tilt_direct",
+    "camera_reduce_glare",
   ]);
+  assert.equal(action31.oneOf[0].properties.referent.const, "camera");
+  assert.deepEqual(action31.oneOf[1].properties.kind.enum, [
+    "none",
+    "manual",
+    "unable",
+  ]);
+  assert.equal(action31.oneOf[1].properties.referent.type, "null");
 });
 
 for (const [fixture, mutate] of [
