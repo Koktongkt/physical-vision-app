@@ -277,20 +277,16 @@ def _validate_region_containment(snapshot: dict[str, Any]) -> None:
     localization = snapshot["localization"]
     reason = localization.get("reason")
     if reason is not None and localization["state"] != localization_states[reason]:
-        raise ContractValidationError(
-            "localization.reason: must agree with localization state"
-        )
+        raise ContractValidationError("localization.reason: must agree with localization state")
     ocr = snapshot["ocr"]
     if ocr.get("reason") == "usable" and (
-        ocr["whole_string_exact_probability_calibrated"] is None
-        or not ocr["raw_string"].strip()
+        ocr["whole_string_exact_probability_calibrated"] is None or not ocr["raw_string"].strip()
     ):
         raise ContractValidationError(
             "ocr.reason: usable requires a non-empty calibrated OCR candidate"
         )
     if ocr.get("reason") == "unreadable" and (
-        ocr["whole_string_exact_probability_calibrated"] is not None
-        or ocr["raw_string"].strip()
+        ocr["whole_string_exact_probability_calibrated"] is not None or ocr["raw_string"].strip()
     ):
         raise ContractValidationError(
             "ocr.reason: unreadable requires empty uncalibrated OCR evidence"
@@ -303,13 +299,8 @@ def _validate_region_containment(snapshot: dict[str, Any]) -> None:
             "ocr.reason: ambiguous requires a non-empty uncalibrated OCR candidate"
         )
     if ocr.get("reason") is not None and ocr["displayed_string"] != ocr["raw_string"]:
-        raise ContractValidationError(
-            "ocr.reason: v3.1 OCR evidence must remain verbatim"
-        )
-    if (
-        support["state"] == "pass"
-        and support["probability_calibrated"] is None
-    ):
+        raise ContractValidationError("ocr.reason: v3.1 OCR evidence must remain verbatim")
+    if support["state"] == "pass" and support["probability_calibrated"] is None:
         raise ContractValidationError(
             "support.probability_calibrated: pass requires measured probability evidence"
         )
@@ -400,13 +391,9 @@ def _validate_policy(decision: dict[str, Any]) -> None:
     _validate_utc_timestamp(decision["evaluated_at"], "evaluated_at")
     action = decision["primary_action"]
     if action["kind"] in CAMERA_ACTIONS and action["referent"] != "camera":
-        raise ContractValidationError(
-            "policy_decision: camera action requires the camera referent"
-        )
+        raise ContractValidationError("policy_decision: camera action requires the camera referent")
     if action["kind"] == "none" and action["referent"] is not None:
-        raise ContractValidationError(
-            "policy_decision: none action requires a null referent"
-        )
+        raise ContractValidationError("policy_decision: none action requires a null referent")
     conjunction = _all_gates_pass(decision["gate_outcomes"])
     if decision["all_required_gates_pass"] is not conjunction:
         raise ContractValidationError(
