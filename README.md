@@ -1,6 +1,6 @@
 # Physical Vision App
 
-A privacy-conscious, local-first application for extracting and evaluating physical-device serial information from camera imagery. This repository currently contains the normative implementation specification, architecture research, and an implementation-ready project skeleton; application functionality has not yet been added.
+A privacy-conscious, local-first application for extracting and evaluating physical-device serial information from camera imagery. This repository currently contains the normative implementation specification, architecture research, an implementation-ready project skeleton, and executable versioned contracts; application functionality beyond the contract boundary has not yet been added.
 
 ## Source of truth
 
@@ -21,5 +21,6 @@ A privacy-conscious, local-first application for extracting and evaluating physi
 
 ## Status
 
-Stage 1 executable contract v3.0 is implemented under `packages/contracts`; application,
-policy-engine, image-processing, persistence, API, and UI behavior remain placeholders.
+Stage 2 is in progress. The thin additive contract v3.1 is implemented under
+`packages/contracts`, while contract v3.0 remains supported. The deterministic policy
+engine, image processing, persistence, API, and UI behavior remain placeholders.
