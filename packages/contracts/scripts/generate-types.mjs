@@ -8,6 +8,7 @@ import { format } from "prettier";
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const contractsRoot = path.resolve(directory, "..");
 const schemaRoot = path.join(contractsRoot, "schemas/v3.0");
+const schemaRootV31 = path.join(contractsRoot, "schemas/v3.1");
 const generatedRoot = path.join(contractsRoot, "src/generated");
 const check = process.argv.includes("--check");
 const files = [
@@ -18,6 +19,7 @@ const files = [
   "failure-envelope",
   "retained-photo-lifecycle",
 ];
+const filesV31 = ["vision-evidence-snapshot", "policy-decision"];
 const exportedTypes = {
   "vision-evidence-snapshot": "VisionEvidenceSnapshot",
   "policy-decision": "PolicyDecision",
@@ -80,9 +82,28 @@ for (const name of files) {
   await emit(path.join(generatedRoot, `${name}.ts`), output);
 }
 
+for (const name of filesV31) {
+  const schema = JSON.parse(
+    await readFile(path.join(schemaRootV31, `${name}.schema.json`), "utf8"),
+  );
+  const compiled = await compile(schema, schema.title, {
+    cwd: schemaRootV31,
+    bannerComment:
+      "/* AUTO-GENERATED from JSON Schema Draft 2020-12. DO NOT EDIT. */",
+    additionalProperties: false,
+    enableConstEnums: false,
+    style: { singleQuote: false, semi: true },
+  });
+  const output = await format(compiled, { parser: "typescript" });
+  await emit(path.join(generatedRoot, `${name}-v3.1.ts`), output);
+}
+
 const index = `${files
   .map((file) => `export type { ${exportedTypes[file]} } from "./${file}.js";`)
-  .join("\n")}\n`;
+  .join("\n")}
+export type { VisionEvidenceSnapshotV31 } from "./vision-evidence-snapshot-v3.1.js";
+export type { PolicyDecisionV31 } from "./policy-decision-v3.1.js";
+`;
 await emit(path.join(generatedRoot, "index.ts"), index);
 console.log(
   check

@@ -1,0 +1,30 @@
+[
+  {
+    "file": "vision-evidence-reasons.json",
+    "kind": "vision-evidence-snapshot"
+  },
+  {
+    "file": "reliable-camera-up-correction.json",
+    "kind": "vision-evidence-snapshot"
+  },
+  {
+    "file": "policy-camera-up.json",
+    "kind": "policy-decision"
+  },
+  {
+    "file": "policy-camera-down.json",
+    "kind": "policy-decision"
+  },
+  {
+    "file": "positive-unsupported-no-label-unreadable.json",
+    "kind": "vision-evidence-snapshot"
+  },
+  {
+    "file": "unknown-multiple-labels-ambiguous-ocr.json",
+    "kind": "vision-evidence-snapshot"
+  },
+  {
+    "file": "ood-uncertain-localization.json",
+    "kind": "vision-evidence-snapshot"
+  }
+]

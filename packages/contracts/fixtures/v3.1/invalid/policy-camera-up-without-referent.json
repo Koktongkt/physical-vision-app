@@ -1,0 +1,31 @@
+{
+  "schema_version": "3.1",
+  "decision_version": "1.1",
+  "decision_id": "decision-v31-up",
+  "result_id": "result-v31-reasons",
+  "snapshot_id": "snapshot-v31-reasons",
+  "policy_version": "policy-v31",
+  "threshold_version": "auto-exact-pet-v1",
+  "threshold_classification": "PET",
+  "auto_threshold_strictly_greater_than": 0.8,
+  "status": "guidance",
+  "primary_action": {
+    "kind": "camera_up",
+    "referent": null
+  },
+  "gate_outcomes": {
+    "support": true,
+    "localization": true,
+    "quality": false,
+    "ocr_integrity": false,
+    "freshness": true,
+    "format_policy": true,
+    "deterministic_safety": true,
+    "no_unknown_blocking": true,
+    "version_compatibility": true
+  },
+  "all_required_gates_pass": false,
+  "automatic_completion_eligible": false,
+  "candidate_ready": false,
+  "evaluated_at": "2026-08-01T10:00:01Z"
+}

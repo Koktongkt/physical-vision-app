@@ -1,0 +1,93 @@
+{
+  "schema_version": "3.1",
+  "snapshot_version": "1.1",
+  "snapshot_id": "snapshot-v31-reasons",
+  "result_id": "result-v31-reasons",
+  "observed_at": "2026-08-01T10:00:00Z",
+  "support": {
+    "state": "pass",
+    "reason": "supported",
+    "ood_state": "in_distribution",
+    "probability_calibrated": 0.97
+  },
+  "localization": {
+    "state": "pass",
+    "reason": "trustworthy",
+    "label_region": {
+      "x": 0.1,
+      "y": 0.2,
+      "width": 0.8,
+      "height": 0.6
+    },
+    "text_region": {
+      "x": 0.2,
+      "y": 0.3,
+      "width": 0.5,
+      "height": 0.2
+    },
+    "text_containment": 0.98,
+    "label_confidence": 0.96
+  },
+  "quality": {
+    "crop": {
+      "state": "pass"
+    },
+    "scale": {
+      "state": "pass"
+    },
+    "center": {
+      "state": "pass"
+    },
+    "blur": {
+      "state": "pass"
+    },
+    "exposure": {
+      "state": "pass"
+    },
+    "contrast": {
+      "state": "pass"
+    },
+    "glare": {
+      "state": "pass"
+    },
+    "occlusion": {
+      "state": "pass"
+    },
+    "perspective": {
+      "state": "pass"
+    },
+    "ocr_integrity": {
+      "state": "pass"
+    },
+    "overall": {
+      "state": "pass"
+    }
+  },
+  "ocr": {
+    "reason": "usable",
+    "raw_string": "SYNTH-31",
+    "displayed_string": "SYNTH-31",
+    "whole_string_exact_probability_calibrated": 0.83,
+    "format_warning": null,
+    "checksum_warning": null,
+    "silent_repair_applied": false,
+    "candidate_mutated": false
+  },
+  "freshness": {
+    "is_current_attempt": true,
+    "age_ms": 10,
+    "max_age_ms": 30000
+  },
+  "versions": {
+    "model": "model-id",
+    "preprocess": "prep-id",
+    "calibration": "cal-id",
+    "schema": "3.1",
+    "policy_compatible": "policy-v31",
+    "threshold_compatible": "auto-exact-pet-v1"
+  },
+  "correction_candidate": {
+    "camera_action": "camera_up",
+    "reliability": "probable"
+  }
+}
