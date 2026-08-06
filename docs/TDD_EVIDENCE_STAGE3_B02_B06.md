@@ -220,7 +220,7 @@ uvx --from uv==0.11.31 uv run ruff check .
 All checks passed!
 
 uvx --from uv==0.11.31 uv run pytest -q
-239 passed in 3.25s
+239 passed in 3.53s
 
 npm run contracts:check
 generated contract types are in sync
@@ -240,11 +240,11 @@ found 0 vulnerabilities
 uvx --from uv==0.11.31 uv run python scripts/check_sensitive_files.py
 sensitive-file check passed for 210 tracked files
 
-git diff --check
+git diff --check HEAD
 (pass, no output)
 
 uvx --from uv==0.11.31 uv run python scripts/measure_decode_resources.py --iterations 10 --width 1024 --height 768
-successful_decodes=20 failed_decodes=0 wall_ms≈147.8 process_cpu_ms≈140.6
+successful_decodes=20 failed_decodes=0 wall_ms=144.703 process_cpu_ms=140.625
 maximum_decode_elapsed_ms=16.0 maximum_encoded_bytes=12916
 maximum_decoded_estimate_bytes=2359296 cancellation/deadline probes=DECODE_BUDGET_EXCEEDED
 ```

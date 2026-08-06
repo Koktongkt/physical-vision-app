@@ -45,19 +45,19 @@ The harness generates solid-color JPEG and PNG fixtures in memory, decodes them 
 
 ## Provisional current-machine observation
 
-Measured 2026-08-06 on the approved personal-test machine. These results are one synthetic run, are non-generalizable, and do not validate product limits or an SLO.
+Measured 2026-08-06 on the approved personal-test machine (fresh re-run during verification handoff). These results are one synthetic run, are non-generalizable, and do not validate product limits or an SLO.
 
 - OS: Windows 10, AMD64; 20 logical CPUs.
 - CPU identifier discovered from the platform: `Intel64 Family 6 Model 198 Stepping 2, GenuineIntel`. The standard API did not expose a marketing model name, so none is assumed.
-- Host RAM: 33,931,792,384 bytes total; minimum available sample 14,830,821,376 bytes.
-- GPU: NVIDIA GeForce RTX 5070; 12,820,938,752 VRAM bytes reported; 1,092,616,192 bytes used before/after; 0% utilization and 37 °C before/after. Pillow decode used no GPU.
-- Storage headroom sample: 624,907,235,328 bytes free for both temporary and retained-storage locations.
+- Host RAM: 33,931,792,384 bytes total; minimum available sample 14,557,966,336 bytes.
+- GPU: NVIDIA GeForce RTX 5070; 12,820,938,752 VRAM bytes reported; 1,078,984,704 bytes used before/after; 1–2% utilization and 42–43 °C before/after. Pillow decode used no GPU (`decode_gpu_used: false`).
+- Storage headroom sample: 624,104,464,384 bytes free for both temporary and retained-storage locations.
 - Workload: ten 1024×768 synthetic JPEG decodes and ten synthetic PNG decodes.
-- Outcome: 20 successful, 0 failed; 168.254 ms wall time and 171.875 ms process CPU time.
+- Outcome: 20 successful, 0 failed; 144.703 ms wall time and 140.625 ms process CPU time.
 - Maximum decoder-observed elapsed time: 16.0 ms; maximum encoded input 12,916 bytes; decoded-RAM estimate 2,359,296 bytes; metadata 14 bytes.
-- Process working set: 22,499,328 bytes before and 26,615,808 bytes after; peak working set sample 37,478,400 bytes.
+- Process working set: 23,113,728 bytes before and 27,394,048 bytes after; peak working set sample 38,232,064 bytes.
 - Cancellation and deadline probes both returned `DECODE_BUDGET_EXCEEDED`.
 - CPU thermal observation was unavailable through the dependency-free standard-library harness.
-- Free-space samples increased by 1,572,864 bytes during the run. The harness performs no file writes; this delta is ambient filesystem activity and is reported rather than interpreted as decoder disk use.
+- Free-space sample deltas were 0 bytes during this run. The harness performs no file writes.
 
 Before widening any guard or claiming minimum hardware, rerun bounded representative workloads, record platform sensor availability, and obtain the applicable B12/B13/B17 evidence and review.
