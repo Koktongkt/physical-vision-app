@@ -156,6 +156,7 @@ def test_roi_box_crop_is_detached_from_source_mutation() -> None:
     assert roi.evidence_kind == "source_roi"
     assert roi.rectified is False
     assert roi.mode == "RGB"
+    assert "_pixels" not in repr(roi)
     before = roi.to_rgb_array().copy()
     source[:, :] = 0
     after = roi.to_rgb_array()

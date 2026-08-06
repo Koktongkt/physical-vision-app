@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from math import hypot, isfinite
 from time import monotonic
@@ -319,7 +319,7 @@ class ExtractedRoi:
     source_quad: NormalizedQuad | None
     rectified: bool
     homography_condition_number: float | None
-    _pixels: bytes
+    _pixels: bytes = field(repr=False)
 
     def to_pillow(self) -> Image.Image:
         return Image.frombytes(self.mode, (self.width, self.height), self._pixels)
