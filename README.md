@@ -15,7 +15,7 @@ A privacy-conscious, local-first application for extracting and evaluating physi
 - `services/api` — local API/service boundary
 - `packages/contracts` — shared versioned contracts
 - `packages/policy` — deterministic policy and safety rules
-- `packages/vision` — bounded safe image decode and resource observation
+- `packages/vision` — bounded safe image decode, OpenCV geometry/ROI/quality, and resource observation
 - `experiments/vision-baseline` — isolated vision experiments
 - `tests` — cross-component verification
 - `data/manifests` and `models/manifests` — metadata only; private data and weights are ignored
@@ -26,7 +26,11 @@ Stage 2 is complete. The thin additive contract v3.1 and deterministic policy
 engine are implemented under `packages/contracts` and `packages/policy`, while
 contract v3.0 remains supported.
 
-Stage 3 has begun: B02 provisional resource policy/observation and B06 bounded
-Pillow JPEG/PNG decode with EXIF-once canonicalization live under
-`packages/vision`. OpenCV, OCR/model inference, persistence, API, and UI
-behavior remain later-stage work.
+Stage 3 B02+B06 (bounded resource plan and safe Pillow decode) lives under
+`packages/vision` as `physical_vision_image` / `physical_vision_resources`.
+
+Stage 4 B07 (OpenCV geometry, ROI/rectification, raw quality measurements, and
+overlay primitives) is implemented under `packages/vision` as
+`physical_vision_geometry`. Phase 2 is not fully closed: classical localization
+baseline (B08) and bake-offs remain later work. OCR/model inference, persistence,
+API, and UI behavior remain later-stage work.
