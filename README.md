@@ -21,6 +21,7 @@ A privacy-conscious, local-first application for extracting and evaluating physi
 
 ## Status
 
-Stage 2 is in progress. The thin additive contract v3.1 is implemented under
-`packages/contracts`, while contract v3.0 remains supported. The deterministic policy
-engine, image processing, persistence, API, and UI behavior remain placeholders.
+Stage 2 is complete. The thin additive contract v3.1 and deterministic policy
+engine are implemented under `packages/contracts` and `packages/policy`, while
+contract v3.0 remains supported. Image processing, persistence, API, and UI
+behavior remain placeholders for later stages.
