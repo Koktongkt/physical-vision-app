@@ -1,0 +1,14 @@
+[
+  {
+    "snapshot": "../../contracts/fixtures/v3.1/valid/vision-evidence-reasons.json",
+    "decision": "automatic-complete.decision.json"
+  },
+  {
+    "snapshot": "../../contracts/fixtures/v3.1/valid/reliable-camera-up-correction.json",
+    "decision": "camera-up-guidance.decision.json"
+  },
+  {
+    "snapshot": "../../contracts/fixtures/v3.1/valid/positive-unsupported-no-label-unreadable.json",
+    "decision": "positive-unsupported.decision.json"
+  }
+]

@@ -1,0 +1,28 @@
+{
+  "schema_version": "3.1",
+  "decision_version": "1.1",
+  "decision_id": "decision-aa6e980ae362bfa44b2db4ed",
+  "result_id": "result-v31-reasons",
+  "snapshot_id": "snapshot-v31-reasons",
+  "policy_version": "policy-v31",
+  "threshold_version": "auto-exact-pet-v1",
+  "threshold_classification": "PET",
+  "auto_threshold_strictly_greater_than": 0.8,
+  "status": "automatic_complete",
+  "primary_action": { "kind": "none", "referent": null },
+  "gate_outcomes": {
+    "support": true,
+    "localization": true,
+    "quality": true,
+    "ocr_integrity": true,
+    "freshness": true,
+    "format_policy": true,
+    "deterministic_safety": true,
+    "no_unknown_blocking": true,
+    "version_compatibility": true
+  },
+  "all_required_gates_pass": true,
+  "automatic_completion_eligible": true,
+  "candidate_ready": true,
+  "evaluated_at": "2026-08-01T10:00:01Z"
+}
