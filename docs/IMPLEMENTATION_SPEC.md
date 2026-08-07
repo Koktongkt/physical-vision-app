@@ -1,10 +1,10 @@
 # Physical Vision App — Authoritative Implementation Specification
 
-**Product:** Iterative still-photo-guided serial-label capture MVP  
-**Specification status:** Approved for localhost-only, single-user personal prototype implementation and evaluation with G1–G8 and A1–A15/D1–D7 decisions incorporated; **not approved for production implementation, distribution of restricted model code/weights, remote availability, operational support, or launch**  
-**Version:** 1.5
-**Last amended:** 2026-08-01
-**Normative source tasks:** `t_edafa288`, `t_9db4b5de`, `t_3bb8d5b2`, `t_e3187d49`, `t_95ff3002`, `t_88bc938f`, `t_f9f6d927`, `t_9d8f876a`, `t_f8132754`, `t_fb42469a`, `t_afa75b47`, `t_577c72e6`
+**Product:** Live-camera 1D barcode framing guidance MVP (personal localhost prototype)  
+**Specification status:** Approved for localhost-only, single-user personal prototype implementation and evaluation with G1–G8 history plus v1.6 Product Owner decisions D-BC-1..6; **not approved for production implementation, distribution of restricted model code/weights, remote availability, operational support, or launch**  
+**Version:** 1.6
+**Last amended:** 2026-08-07 (v1.6 + RI section 0.2 classical/OpenCV-first path)
+**Normative source tasks:** `t_edafa288`, `t_9db4b5de`, `t_3bb8d5b2`, `t_e3187d49`, `t_95ff3002`, `t_88bc938f`, `t_f9f6d927`, `t_9d8f876a`, `t_f8132754`, `t_fb42469a`, `t_afa75b47`, `t_577c72e6`, `t_b331c72a`, `t_e45e9c6b`
 
 ## 0. How to read this specification
 
@@ -22,86 +22,178 @@ Decision labels:
 
 ---
 
+
+## 0.1 Active MVP supersession (v1.6)
+
+**Active product goal (v1.6 AR):** live 1D barcode **detection + quality + one-action camera guidance** until a **ready** (e.g. green) state tells the user they **may take the picture**. Human shutter. **No** barcode payload decode and **no** serial OCR as the MVP outcome.
+
+Product Owner decisions **D-BC-1..6** (`t_b331c72a`):
+
+1. Detection-only for now (no decode product output).
+2. Multiple or zero 1D barcodes → **abstain** (no largest/center guess).
+3. **1D only** (2D/QR out of MVP target set).
+4. **Live guide** until optimal point; ready UI (e.g. green) = notification the user can shoot — not silent business auto-complete.
+5. Subject = **any** single 1D barcode scene (not bottle-only).
+6. Public barcode datasets = **training/supplement only**, not sole proof of live guidance/ready claims.
+
+**Historical path:** sections and backlog items that describe still-photo **serial OCR**, bottle-only G1, barcode-as-landmark-only, deferred live camera, and serial PET auto-completion remain in this document as **engineering provenance and a deferred optional track**. Where they conflict with §0.1 / §1.1 / §2.1 / §3.0, **v1.6 active MVP wins**. Stages 1–5b code on `main` (contracts, policy skeleton, safe decode, geometry, classical localization, parked OCR baseline) remains reusable infrastructure.
+
+**Post-ready default:** after the user takes a picture from ready, freeze the captured frame and offer retake (return to live guide). No decode string.
+
+---
+
+## 0.2 Recommended MVP implementation sequence (RI, v1.6)
+
+This RI freezes the **first engineering path** for the active barcode-framing MVP. It is not a bake-off winner claim and not a production accuracy claim. Change via ADR if measurements force a different detector.
+
+### 0.2.1 Detector path
+
+1. **Live / still spike (first):** OpenCV `barcode` detector **plus** the existing Stage 5 classical localization path (`physical_vision_localization`: OpenCV barcode proposals + morph/gradient barcode proposals).
+2. **Per-frame (or per-sample) outputs MUST include:**
+   - `barcode_count_1d` semantics: `none | one | multiple | unknown`
+   - when `one`: a single normalized box (payload/decode string **omitted** from product output)
+   - simple quality features for that box (see section 0.2.2)
+3. **Product decode policy:** barcode **payload decode is off** in the product path (D-BC-1). Optional decode MAY run only in offline experiments as a "scanner-readable?" diagnostic metric and MUST NOT be shown as MVP success.
+4. **Escalation:** only if measured recall is poor on real webcam/phone trials (small codes, angle, glare) MAY a one-class nano box detector exported to **ONNX + ORT** be introduced—still detect-only. Ultralytics remains non-distributable in the app artifact absent a new licence decision.
+5. **PaddleOCR / serial OCR** are **not** on this MVP path.
+
+### 0.2.2 Ready / green gates (geometry + quality, not a heavy net)
+
+**Ready** requires **all** of:
+
+| Gate | Intent | Initial seed (VT — calibrate later) |
+|---|---|---|
+| Exactly one 1D box | Abstain on 0 / 2+ (D-BC-2) | count == 1 |
+| Min area | Not a tiny speck | normalized area ≥ recipe min (start from classical `min_barcode_area_normalized`) |
+| Min short side (px) | Readable scale on the sensor | VT after pilot (e.g. short side ≥ 40–80 px at working resolution) |
+| Margins | Not clipped by frame edge | box inset from each image edge by VT margin fraction |
+| Blur | Sharp enough | Laplacian variance on box ROI ≥ VT |
+| Skew / aspect sanity | Plausible 1D barcode geometry | aspect within classical min/max barcode aspect; optional skew angle bound VT |
+| Exposure/glare (optional v1) | Not blown out | simple ROI mean/saturation guards as VT |
+
+If count ≠ 1 → **abstain** (no directional guidance, not ready).
+If count == 1 but any ready gate fails → **guidance** with **exactly one** camera-referent action derived from the dominant failing gate (e.g. too small → closer; clipped left → move camera right; blur → steady/closer).
+If all pass → **ready** (e.g. green) = user may take the picture.
+
+### 0.2.3 Delivery order (maps to B21–B26)
+
+1. **B21** Live camera client: permission, preview, bounded sample rate/resolution, shutter, freeze/retake.
+2. **B22** Wire OpenCV + Stage 5 classical barcode proposals → `none|one|multiple` + box + overlay (decode off).
+3. **B23** Quality features + ready gates + green ready UI.
+4. **B24** One-action guidance from dominant failing gate.
+5. **B25** Ephemeral preview, resource budgets, loopback/privacy.
+6. **B26** Measure misses on webcam/phone; public-supplement offline metrics only as secondary; escalate to ONNX nano only if justified.
+
+### 0.2.4 Explicit non-goals for this RI
+
+- Shipping PaddleOCR/Tesseract for the barcode MVP
+- Product-facing barcode payload strings
+- Multi-barcode "pick largest" heuristics
+- Declaring classical or ONNX detectors validated without live pilot evidence
+
+---
+
 ## 1. Product objective and target users
 
 ### 1.1 Objective
 
-**AR:** Help a cooperative user obtain one trustworthy, verbatim printed serial/text value from the barcode-bearing wraparound label of one plastic water bottle with minimal manual effort. The barcode-bearing area helps localize the label; rectified OCR reads the nearby printed serial/text while preserving leading zeros, separators, and displayed characters. The workflow ends with one traceable final value, an editable candidate, one next-photo action, or an explicit failure/manual outcome.
+**AR (active, v1.6):** Help a cooperative user frame **one 1D barcode** using a **live camera preview** in the localhost personal-test web app. The system continuously estimates 1D barcode presence, localization, and capture quality; while not ready it presents **exactly one** safe camera-referent guidance cue (movement, angle, distance, steadiness, or lighting). When readiness gates pass, it shows a distinct **ready** state (for example green) meaning **the user may take the picture**. If no 1D barcode or more than one 1D barcode is evidenced, the system **abstains** from directional guidance and from ready. The MVP **MUST NOT** decode barcode payloads and **MUST NOT** treat serial OCR as the product outcome.
 
-The MVP optimizes for **observable, abstaining assisted capture**. Capture readiness and business completion remain separate. Automatic business completion is now permitted only by the narrowly bounded PET rule in §3.4; otherwise the product exposes an editable `serial_candidate` and optional confirmation/correction path. No raw recognizer score, checksum, format match, multi-photo agreement, or character repair may independently authorize completion, and no OCR/format/checksum correction may be silent.
+The MVP optimizes for **observable, abstaining assisted capture**. **Capture readiness** (ready-to-shoot) and any later **business completion** remain separate. Ready is a user notification to shoot; it is **not** automatic business completion and **not** authorization to silently accept a decoded or OCR'd string.
+
+**Historical AR (superseded for active MVP; deferred track):** obtain one trustworthy verbatim printed serial/text near a barcode on a plastic water bottle via iterative still photos and optional PET automatic serial completion. That path is deferred; see §3.4 and pre-v1.6 amendment history. Engineering artifacts from Stages 1–5b may still support a future return to that track.
 
 ### 1.2 Users
 
-**Primary:** one personal tester using the localhost application from a laptop/desktop browser and submitting still photos, including webcam screen captures and photos transferred from a smartphone camera.
+**Primary:** one personal tester using the localhost application from a laptop/desktop browser (and standards-compatible mobile browsers where live camera is available), granting camera permission for **live preview** and taking a still when ready. Webcam and smartphone browser cameras are in scope when the browser exposes them; capability matrix remains provisional under G4.
 
 **Future users only:** field technicians, installers, depot workers, inventory operators, back-office staff, supervisors, and pilot administrators. Multi-user, reviewer, administrative, and remote-access workflows are not personal-test prototype features.
 
-**Not targeted by the MVP:** unattended production-line inspection, high-volume scanning, forensic recovery, arbitrary scene/document OCR, or operation requiring fully non-visual verification.
+**Not targeted by the MVP:** unattended production-line inspection, high-volume scanning, forensic recovery, arbitrary scene/document OCR, barcode payload inventory integration, or operation requiring fully non-visual verification.
 
 ### 1.3 Priority use cases
 
-1. Begin with one uploaded JPEG/JPG or PNG still photo.
-2. When evidence is insufficient, receive one concrete camera movement, angle, distance, steadiness, obstruction, or lighting action and upload another still photo.
-3. Repeat analysis and guided recapture without restarting the business task until evidence is sufficient or retry/manual policy ends the attempt.
-4. Receive a visibly identified automatic completion only when every §3.4 gate passes, or inspect/edit a `serial_candidate` and optionally confirm or correct it.
-5. Exit honestly to manual/escalation or terminal failure when iterative still-photo capture cannot succeed.
+1. Open the localhost app, grant camera permission, and start a **live preview**.
+2. Point the camera at a scene that should contain **one** 1D barcode.
+3. While not ready, receive **exactly one** camera-referent guidance cue and an overlay on the live view.
+4. When quality gates pass, see a clear **ready** affordance (e.g. green) and **take the picture** (human shutter).
+5. Review the frozen capture; retake if desired. Exit honestly when the scene is unsupported (including multi-barcode abstain that cannot be resolved) or on terminal error.
+
 
 ---
 
 ## 2. MVP scope and explicit non-goals
 
-### 2.1 Approved scope
+### 2.1 Approved scope (active v1.6 MVP)
 
-- One task contains one plastic water bottle, one ordinary matte or glossy printed wraparound barcode-bearing label, and one printed serial/text value near the barcode.
-- The initial MVP is an iterative still-photo workflow. It starts with one uploaded JPEG/JPG or PNG photo and MAY request additional still-photo uploads with one concrete recapture instruction at a time.
-- Text scope is printed Latin letters, Arabic numerals, and common separators (`-`, `/`, `.`, spaces), preserving meaningful leading zeros and separators.
-- The barcode-bearing area MAY be used to identify or localize the relevant label region. The barcode payload MUST NOT be decoded or used as the final value; OCR MUST read the printed serial/text near it.
-- The G1 pilot allowlist is plastic water bottles with ordinary matte or glossy printed wraparound labels. Other objects and label families are unsupported until separately approved and validated.
-- The product is a browser-only web application served on localhost for one personal tester. It supports standards-compatible desktop and mobile browsers, including iOS Safari, as still-photo sources through the browser file/photo picker; photos may originate from smartphone cameras or ordinary built-in/USB webcams, but every analysis receives a completed JPEG/JPG or PNG still. There are no native iOS, Android, or desktop applications. Continuous live-camera preview, frame streaming, and real-time guidance are deferred.
-- Expected use is indoor or sheltered, cooperative, safely accessible, and normally allows adjustment of distance, angle, steadiness, obstruction, or ambient light.
-- Ordinary matte and glossy printed wraparound labels, including ordinary curvature, are in evaluation scope. Transparent, foil, severely wrinkled, and heavily damaged labels are positive unsupported/OOD classes. Partial obstruction is actionable only when reliable evidence supports a safe camera direction/angle that should improve visibility; otherwise the policy emits unknown/manual.
-- Guidance recommends user actions. The product does not claim control of focus, zoom, exposure, flash, lens, camera movement, or object movement.
-- The user may inspect, edit, confirm, or correct the proposed serial. Machine proposal, automatic completion, user confirmation, and later correction/supersession remain distinguishable.
+- One interactive task aims at **one 1D barcode** visible in a live camera view. Supported subject matter is **any** scene where a single 1D barcode is the intended target (not restricted to plastic water bottles).
+- The MVP is a **live-camera guidance** workflow: continuous preview, bounded frame sampling, real-time detection/quality/guidance, and a **ready** state. The user takes the picture when ready (human shutter). Auto-shutter without user intent is **not** approved.
+- Detector target class: **1D barcodes only**. 2D codes (including QR) are non-targets for ready/guidance; they MUST NOT alone produce ready.
+- **Zero or multiple** distinct 1D barcodes → **abstain** (no directional guidance that picks a target; not ready). The product MUST NOT silently choose largest/center/first.
+- Product output is **capture assistance**: overlays, one guidance action, ready notification, and the user-captured still. **Barcode payload decode is out of MVP scope.** Serial OCR is out of MVP scope.
+- Ready means "you may take the picture," not business completion and not a decoded value.
+- The product is a browser-only web application served on localhost for one personal tester. Standards-compatible desktop and mobile browsers are intended; exact live-camera support is capability-dependent and must be measured (G4). No native iOS/Android/desktop apps.
+- Guidance recommends user camera actions only (camera referent). The product does not claim control of focus, zoom, exposure, flash, lens motors, or object movement.
+- Public barcode datasets MAY be used for detector training and offline metrics only (`D-BC-6`). They MUST NOT alone substantiate live ready-light or physical guidance claims.
+- Expected use is cooperative, indoor or sheltered, and normally allows the user to adjust distance, angle, steadiness, obstruction, or light.
 
-### 2.2 Explicit non-goals
+### 2.2 Explicit non-goals (active v1.6 MVP)
 
-- Objects other than plastic water bottles; unsupported label families or languages; handwriting; transparent or foil labels; severe wrinkles, heavy damage, severe curvature distortion, dot-peen marks, or severe-damage recovery.
-- Multiple labels/serials, batches, uploaded video, animated/multi-frame media, continuous live-camera preview/streaming/guidance, multi-camera rigs, conveyors, robots, or background scanning.
-- Manufacturer-specific camera control, guaranteed autofocus/exposure/flash/zoom, calibrated physical tilt measurement, or external triggers.
-- Unbounded autonomous acceptance/submission, silent OCR repair, asset identity proof, counterfeit detection, condition assessment, or safety certification. The only automatic completion allowed is the localhost PET rule in §3.4.
-- ERP/inventory integration, reviewer portal, account administration, analytics dashboard, production media-management service, or production training pipeline.
-- Authentication, accounts, tenancy, anonymous remote access, remote/public availability, multi-user concurrency, production availability, formal operational support, regulated chain of custody, or hard real-time guarantees.
-- Accessibility conformance, localization beyond English, audio/haptic guidance, or non-visual verification in this personal-test version.
-- Barcode/QR value decoding. The presence of a barcode may help localize the label, but the MVP reads printed serial/text near it.
+- Barcode **payload decode** (UPC/EAN/Code128 strings, etc.) as a product result; QR/2D targeting; multi-barcode disambiguation by heuristic pick.
+- Serial/text OCR as the MVP goal; PET whole-string serial auto-completion; silent OCR/format/checksum repair (deferred track only if reactivated).
+- Auto-capture/auto-shutter without explicit user intent; continuous background scanning for inventory.
+- Multi-camera rigs, conveyors, robots, unattended lines, production SLOs, remote/multi-user access.
+- ERP/inventory integration, reviewer portals, accounts/tenancy, regulated chain of custody.
+- Accessibility conformance, localization beyond English, audio/haptic guidance in this personal-test version.
+- Treating public-dataset benchmarks as proof the live ready UI is validated.
+- Ultralytics distribution remains forbidden absent a new licensing decision.
+
+### 2.3 Deferred / historical serial-OCR track (not active MVP)
+
+Pre-v1.6 scope (bottle wraparound label, barcode as landmark only, iterative still-photo serial OCR, optional §3.4 PET serial completion) is **deferred**. Implementers MUST NOT present that track as the current product goal. Contracts and code supporting it MAY remain for reuse. Reactivation requires a versioned amendment.
+
 
 ---
 
 ## 3. Approved user workflow
 
-### 3.1 Entry and first still photo
+### 3.0 Live 1D barcode framing (active MVP)
 
-1. Explain the supported scope and that the MVP works from uploaded still photos, not a continuous live feed.
-2. Offer one **Upload photo** action. The browser MAY invoke a device camera through its file/photo picker, but the application receives one completed still image per attempt.
-3. Accept exactly one JPEG/JPG or PNG still image per attempt. Validate actual decoded type rather than trusting the extension or header, plus frame count, dimensions, bytes, metadata, decompression work, and processing budget before inference. Preprocessing MAY resize valid large photos for model input; a model input dimension is not a product-quality upload cap. Necessary pre-decode, decompression-bomb, memory, CPU, temporary-disk, and retained-local-storage guards remain mandatory, with exact numeric limits provisional.
-4. Classify the submission source as `screen_capture`, `smartphone_camera_capture`, or `ordinary_file_upload` using explicit client/user provenance. Retention eligibility depends on this classification and MUST NOT be inferred from image content.
-5. Show the chosen photo and a bounded processing state; every accepted attempt returns one result or an explicit timeout/failure.
+1. Explain supported scope: live guidance to frame **one 1D barcode**; user takes the photo when ready; no decode/serial OCR in this MVP.
+2. Request camera permission; on denial, fail honestly with recovery instructions.
+3. Show **live preview**. Sample frames under a bounded resource budget (resolution, rate, CPU/GPU/RAM/thermal). Exact numeric budgets remain VT/PET pending measurement.
+4. On each sampled frame (or fused short window), estimate 1D barcode count and, if exactly one, region + quality features (size, margins/crop, blur, exposure/glare proxies, skew/perspective, and related readiness signals).
+5. **Count policy:** `none` or `multiple` or `unknown` → **abstain** (no directional action; not ready; user-facing abstain copy). `one` → continue.
+6. If one barcode but not ready → status equivalent to guidance with **exactly one** camera-referent action and matching overlay.
+7. If one barcode and all readiness gates pass → **ready** (e.g. green). Action `none`. Notify that the user **may take the picture**. Do not require machine business completion.
+8. On user shutter: freeze the captured frame, keep captured/ready presentation, offer **Retake** (back to live). Optional explicit session end.
+9. Preview frames SHOULD be ephemeral by default; retain only user-captured stills under G6-style rules once capture retention is implemented (HD residual: exact retention coupling for live grabs).
+10. Mark any offline/replayed video or screen recordings used in tests with explicit provenance; they do not alone prove live physical guidance.
 
-### 3.2 Iterative still-photo guidance
+Approved camera-referent patterns remain valid: "Move the camera left.", "Move the camera closer.", "Tilt the camera to face the barcode more directly.", "Move the camera or light to reduce glare.", plus up/down equivalents already in policy v3.1.
 
-1. Analyze each uploaded still through the bounded observable pipeline in §9.
-2. If every current-attempt support, localization, quality, OCR-integrity, freshness, format-policy, and deterministic safety gate passes with no unknown/blocking evidence, return either `status=automatic_complete` under §3.4 or `status=ready_for_verification` with an editable `serial_candidate`.
-3. `capture_complete=true` means capture analysis is sufficient for a completion path; `business_complete=true` means a traceable final value has actually been created. They MUST NOT be conflated.
-4. If evidence is insufficient but recoverable, return both flags false with exactly one safe recommendation for the **next photo** and invite another JPEG/JPG or PNG upload.
-5. Initial-prototype wording is camera-referent only. Approved patterns include “Move the camera left.”, “Move the camera closer.”, “Tilt the camera to face the label more directly.”, and “Move the camera or light to reduce glare.” Do not mix camera and object referents in one workflow without a later versioned decision.
-6. Render the action directly on the analyzed still with a clear overlay/arrow and matching English text before the user takes the next photo.
-7. Preserve task/session context and increment `upload_sequence`. Analyze the current still independently; use only explicitly versioned, policy-eligible bounded history. Replayed photos/screens are permitted for algorithm testing only when marked `capture_provenance=replayed`; they are excluded from representative physical-workflow and locked physical-guidance claims, and no liveness claim is made.
-8. Repeat without a product attempt-count ceiling until completion/candidate readiness, user exit, or terminal unsupported/input/resource/dependency/internal-error outcome. A sufficient first photo may complete or expose a candidate; no two-frame requirement applies.
+### 3.1 Historical still-photo entry (deferred serial track)
 
-### 3.3 Deferred live-camera path
+The following still-photo upload entry path is **deferred** with the serial-OCR goal. It remains documented for provenance and possible future dual-mode support:
 
-Continuous preview, automatic frame sampling/streaming, real-time camera guidance, stale-frame handling, temporal frame persistence, and live track lifecycle are deferred to a later phase. They are not initial-MVP requirements or release gates. A future live mode requires a versioned amendment and separate privacy, browser, performance, accessibility, and validation evidence.
+1. Explain still-photo mode if reactivated.
+2. Offer **Upload photo**; browser MAY invoke a device camera through its file/photo picker, receiving one completed still per attempt.
+3. Accept exactly one JPEG/JPG or PNG still per attempt with the same decoder/resource guards as elsewhere in this specification.
+4. Classify `screen_capture` | `smartphone_camera_capture` | `ordinary_file_upload` explicitly for retention.
+5. Show the photo and bounded processing; every accepted attempt returns one result or explicit timeout/failure.
+
+### 3.2 Historical iterative still-photo guidance (deferred serial track)
+
+Deferred with serial OCR. Summary: analyze each still; if gates pass expose candidate/automatic serial completion under §3.4; else one next-photo action; no two-frame requirement; replayed provenance excluded from physical claims.
+
+### 3.3 Live-camera path status
+
+**v1.6 amendment:** continuous preview, bounded frame sampling, real-time guidance, ready-light, stale-frame handling, and live track lifecycle are **in scope for the active MVP** and are no longer deferred. They still require privacy, browser, performance, thermal, and validation evidence before any claim of robustness. Accessibility and production hard-real-time guarantees remain out of scope.
+
 
 ### 3.4 Candidate, automatic, and user completion
+
+**Status (v1.6):** This subsection defines the **deferred serial-OCR completion** track and remains normative **only if that track is reactivated**. It does **not** define success for the active live barcode framing MVP (success = ready-to-shoot notification + user capture). Active MVP MUST NOT create `final_serial` from barcode decode or OCR.
 
 1. Preserve and display the recognizer’s verbatim raw/displayed string, including leading zeros and separators. Format/checksum evidence is a warning only and MUST NOT silently rewrite, normalize, repair, or substitute characters.
 2. **AR/PET:** For the localhost personal-test prototype, automatic creation of `final_serial` and business completion MAY occur only when a calibrated estimate of whole-string exact correctness is **strictly greater than `0.80`** and every required current-attempt support, localization, quality, OCR-integrity, freshness, format-policy, and deterministic safety gate passes with no unknown or blocking evidence.
@@ -513,10 +605,10 @@ Preregister grouped splits, metrics, confidence methods, subgroup gates, resourc
 
 | Gate | Status / owner | Approved decision or remaining decision | Recommendation / next evidence |
 |---|---|---|---|
-| G1 Product scope | **Approved (amended)** — Product Owner | Plastic water bottles with ordinary matte/glossy printed wraparound barcode-bearing labels. OCR preserves verbatim nearby serial text; barcode payload is not final value. Conditional automatic completion is allowed only by §3.4. | Build supported and positive unsupported/OOD corpus; keep one object/label/value per task. |
+| G1 Product scope | **Approved (amended v1.6)** — Product Owner | **Active:** any scene with a single **1D barcode**; live framing guidance; detect-only; ready = user may shoot; multi/zero → abstain; no decode/serial OCR goal. **Deferred:** prior bottle+serial OCR G1. | Live detect/quality/ready evidence; public data only as supplement; real device trials for guidance claims. |
 | G2 Quality study | **Protocol approved; operating point pending evidence** — Product Owner + ML/Quality Lead | Grouped physical-item/session splits, exact-string correctness, calibration/risk-coverage, false-ready/false-accept with coverage, worsening/unsafe guidance, confidence intervals/subgroups, locked test, and no post-hoc tuning. The `>0.80` value is PET only; 99.0%/99.9% claims remain unapproved. | Replace or reaffirm the PET and approve false-ready, coverage, worsening/unsafe-action and subgroup bounds from locked evidence. |
-| G3 Iterative still-photo/completion policy | **Approved (amended again)** — Product Owner | A sufficient still may automatically complete only under strict `>0.80` calibrated whole-string PET plus every required gate; otherwise expose an editable candidate/optional user path or one camera-referent action. No two-frame rule; live guidance deferred. | Test the strict boundary, all vetoes, candidate path, automatic provenance/correction/supersession, and guided recovery. |
-| G4 Platform matrix | **Approved scope; exact versions/limits provisional** — Product Owner | Browser-only web application; standards-compatible desktop/mobile browsers including iOS Safari; JPEG/JPG and PNG still-photo upload through file/photo pickers. No native apps and no initial-MVP continuous camera stream. | Client/QA owners must validate exact browser versions, picker/capture behavior, byte/dimension/decode limits, and minimum resources. |
+| G3 Capture/guidance policy | **Approved (amended v1.6)** — Product Owner | **Active:** live one-action camera guidance until ready; human shutter; no business auto-complete from ready alone. **Deferred:** still-photo serial PET auto-complete §3.4. | Test abstain on 0/multi, single-action guidance, ready false-ready rate, live privacy/resource behavior. |
+| G4 Platform matrix | **Approved scope (amended v1.6); exact versions/limits provisional** — Product Owner | Browser-only localhost web app; live camera preview where the browser permits; user-captured stills (and optional deferred still-upload path). No native apps. | Validate live permission/preview/shutter matrix per browser; measure frame budgets; still-decode limits remain for captures. |
 | G5 Deployment | **Approved for personal test** — Product Owner | Same-machine localhost, one user, loopback-only. No authentication, account, tenant, anonymous remote access, public/LAN availability, production availability, or operational-support requirement. | Prove loopback binding and hostile host/origin rejection; reopen before any remote or multi-user use. |
 | G6 Data governance | **Approved for personal evaluation** — Product Owner | Retain local screen-capture and smartphone-camera photos with linked vision-analysis metadata and model/policy/preprocess/calibration/schema versions until manual pair deletion. Ordinary file uploads are not automatically retained. No backup/export/review/training copy. | Test source classification, linkage, storage exhaustion, atomic/deletion-pending behavior, ordinary-upload cleanup, and no shadow copies. |
 | G7 Service objectives | **Approved for personal test** — Product Owner | One user; best-effort processing with measured latency; no formal production SLO/availability/RTO/RPO/support target and no maximum guidance-attempt count. User exit and terminal unsupported/input/resource/dependency/internal-error outcomes remain. Model input size is not a product upload cap; provisional safety guards still apply. | Measure latency and calibrate exact pre-decode/decompression/local-storage guards without turning them into quality claims. |
@@ -528,7 +620,7 @@ Preregister grouped splits, metrics, confidence methods, subgroup gates, resourc
 2. **Executable contracts and serial policy:** exact alphabet/layout/length rules remain data-dependent; B06 must refine schema v3.0 without allowing silent format/checksum repair.
 3. **Model and licensing selection:** localization and OCR winners remain bake-off dependent. PP-OCRv6 weights/dependencies require exact licence verification. Ultralytics remains experiment-only and non-distributable absent a new licensing/distribution decision.
 4. **Resource envelope:** CPU model and final CPU/GPU/RAM/VRAM/disk/thermal/latency limits remain unknown/measurement-dependent; workloads must still be bounded and observable.
-5. **Future scope:** remote/multi-user deployment, production claims/SLO/support, accessibility/localization, backup/export/review/training reuse, liveness, and continuous camera guidance remain unapproved.
+5. **Future scope:** remote/multi-user deployment, production claims/SLO/support, accessibility/localization, backup/export/review/training reuse, and **barcode decode / serial-OCR reactivation** remain unapproved. **Live camera guidance is approved for the v1.6 personal MVP** but not as a production/liveness claim.
 
 ### 13.2 Missing source areas
 
@@ -545,6 +637,8 @@ These omissions are explicit backlog work, not implicit approvals.
 ---
 
 ## 14. Recommended implementation phases and acceptance gates
+
+**v1.6 critical path note:** implement **section 0.2** — live 1D detect (OpenCV + Stage 5 classical) → quality/ready gates → one-action guide → green UI → user capture. Serial-oriented Phase 3 OCR bake-offs (B10) and serial completion integration are **deferred** unless reactivated. Classical barcode localization and quality/geometry from Phase 2 remain on the path. Public barcode corpora may accelerate detector work under D-BC-6.
 
 ### Phase 0 — Decisions, licences, and evidence foundation
 **Work:** freeze v3 contracts/terminology, G2 preregistration, data/provenance/retention plan, licence register, resource instrumentation, and versioned PET configuration.  
@@ -601,6 +695,18 @@ The table defines dependency and acceptance ownership. Completion status is trac
 | B19 | Product Owner/ML Quality decision on PET and operating bounds | B18 | Versioned replace/reaffirm decision; no production claim implied. |
 | B20 | Conduct personal test and future-scope review | B17–B19 | Local go/no-go, correction/deletion audit, residual risks and amendment needs. |
 
+**v1.6 active barcode-framing backlog (additive; prefer these for near-term stages):**
+
+| ID | Backlog item | Depends on | Output / acceptance |
+|---|---|---|---|
+| B21 | Live camera client: permission, preview, bounded sample, shutter, freeze/retake | G4/G5, B05 design | Preview works on at least one desktop browser path; denial/error honest; resource-bounded sampling. |
+| B22 | 1D barcode detect + count (none/one/multiple) with overlay | B07, B21 | Abstain on 0/multi; stable box on single; synthetic+public-supplement metrics reported. |
+| B23 | Quality features and ready gates + green ready UI | B22 | Ready only when gates pass; false-ready measured on pilot; no decode required. |
+| B24 | One-action live guidance from quality deficits | B04 patterns, B23 | Exactly one camera-referent cue; abstain when not single; offline+live pilot evidence. |
+| B25 | Live privacy/resource hardening (ephemeral preview, budgets, loopback) | B02, B21–B24 | No preview shadow copies by default; budgets observed; content-free telemetry. |
+| B26 | Live locked mini-study + public-supplement detector report | B22–B25, D-BC-6 | Separate public offline metrics from live guidance/ready claims; document limits. |
+
+
 ## 16. Source traceability
 
 ### 16.1 Source register
@@ -616,7 +722,9 @@ The table defines dependency and acceptance ownership. Completion status is trac
 - `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md` and task `t_f8132754` — evidence-backed hybrid pipeline, technology candidates, contracts, licensing risks, grouped evaluation/calibration/statistical framework, resource constraints, and dependency-ordered experiments.
 - `t_fb42469a` — Product Owner normative amendment approving A1–A15/D1–D7, the provisional strict `>0.80` automatic-completion rule, camera referent, replay qualification, and supersession semantics.
 - `t_afa75b47` — Product Owner approval for the Stage 2 sequence: smallest additive contract v3.1, thin pure B04, essential tests now, and exhaustive/system/physical/UI obligations at their existing later gates.
-- `t_577c72e6` — implementation and executable-fixture trace for contract v3.1 and this v1.5 amendment.
+- `t_577c72e6` — implementation and executable-fixture trace for contract v3.1 and the v1.5 amendment.
+- `t_b331c72a` — Product Owner decisions D-BC-1..6 pivoting active MVP to live 1D barcode framing guidance (detect-only, abstain multi, 1D only, ready=green human shutter, any barcode, public data supplement-only).
+- `t_e45e9c6b` — specification amendment task incorporating D-BC-1..6 into v1.6.
 
 ### 16.2 Decision-to-source mapping
 
@@ -642,6 +750,8 @@ The table defines dependency and acceptance ownership. Completion status is trac
 - “Ready” no longer universally means mandatory confirmation. Explicit confirmation is optional when §3.4 automatic gates pass.
 - `image_correction` is image-space evidence; initial UI wording is camera-referent only.
 - `replayed` is test provenance, not liveness or representative physical-guidance evidence.
+- **Ready (v1.6 active MVP)** means capture-quality sufficient for the user to take a picture (e.g. green affordance). It is not `business_complete` and does not imply decode or serial OCR.
+- **Abstain (v1.6)** applies when 1D barcode count is not exactly one; no directional target selection.
 - Prior never-machine-accept/never-auto-submit/mandatory-confirmation wording is explicitly superseded by v1.4 only to the bounded §3.4 rule; the prohibition on guessed, silently repaired, uncalibrated, stale, or gate-incomplete automatic completion remains.
 
 ---
@@ -650,15 +760,16 @@ The table defines dependency and acceptance ownership. Completion status is trac
 
 ### 17.1 Amendment history
 
+- **v1.6 — 2026-08-07 — Product Owner — decision `t_b331c72a`, amendment `t_e45e9c6b`:** Pivoted the **active** localhost MVP from still-photo serial-OCR completion to **live 1D barcode framing guidance**. Approved D-BC-1..6: detect-only (no payload decode), abstain on zero/multiple 1D codes, 1D-only targets, live guide until ready with green-style **user may shoot** notification and human shutter, any-single-barcode subject scope, public datasets as training/supplement only. Promoted live camera path into MVP scope (§3.0/§3.3); marked bottle+serial OCR AR, barcode-as-landmark-only rule, and §3.4 serial PET completion as **deferred historical track**. Added backlog B21–B26. Stages 1–5b remain valid infrastructure provenance. No production/decode/serial claim authorized. Follow-on on the same amendment PR: added **section 0.2 RI** locking OpenCV barcode + Stage 5 classical path first, geometry/quality ready gates, decode-off, ONNX nano only on measured miss, PaddleOCR off-path.
 - **v1.5 — 2026-08-01 — Product Owner — decision `t_afa75b47`, implementation `t_577c72e6`:** Affected §§5.4–5.5, 8.1, 14–17. Approved the smallest additive executable contract v3.1 prerequisite and narrowed B04 to the pure current-snapshot policy core. Added typed support/localization/OCR reasons, an explicit nullable reliability-qualified camera correction candidate, and `camera_up`/`camera_down` policy actions without prose or overlays. Preserved v3.0 and every Stage 1 PET/gate/unknown/verbatim/status/action/linkage invariant. Compatibility impact: validators continue accepting declared v3.0 documents; v3.1 consumers explicitly opt into and regenerate only the evidence/policy 1.1 bindings; outer result/completion migration remains B13/B14 work, with no silent component mixing. Deferred admission, privacy, resources, dependencies, session/transport, retention, replay-flow integration, completion/correction/supersession, UI, exhaustive testing, and physical qualification to their existing backlog gates. This simplification is sequencing only, not a validated policy, physical-guidance, PET, or product claim.
 - **v1.4 — 2026-07-26 — task `t_fb42469a`:** Incorporated Product Owner approvals A1–A15/D1–D7 from `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md` / `t_f8132754`. Approved the bounded Pillow/OpenCV hybrid pipeline, localization/quality/OCR bake-offs, conditional learned heads, PP-OCRv6 benchmark qualification, ONNX Runtime CPU baseline, deterministic evidence/policy boundary, grouped locked evaluation framework, resource observability, replay qualification, camera-only wording, licensing restrictions, and full local evidence/completion supersession. Superseded universal never-machine-accept/mandatory-confirmation wording: automatic completion is permitted only when the calibrated whole-string estimate is strictly greater than the versioned PET `0.80` and every required current-attempt gate passes with no unknown/blocker; otherwise candidate/user/guidance paths apply. The PET is not a validated or production claim and remains subject to G2 replacement/reaffirmation.
 - **v1.3 — 2026-07-23 — task `t_9d8f876a`:** Resolved G5–G8 for a one-user visual personal test. Fixed deployment to same-machine localhost with no authentication, accounts, tenancy, anonymous remote access, production availability, or support commitment. Approved local retention of screen-capture and smartphone-camera photos together with linked analysis and model/policy/preprocessing/calibration/schema versions until manual pair deletion; ordinary uploads remain ephemeral. Set best-effort processing with measured latency, no formal SLO and no guidance-attempt ceiling, while preserving terminal/user exits and provisional pre-decode/decompression/local-storage guards; model input size is not a product upload cap. Limited the prototype to English visual guidance with on-image overlays/arrows and physical direction/angle/distance/lighting text, no formal accessibility target, and still capture rather than continuous guidance. Advanced the additive illustrative result schema to v2.1. Preserved the then-current G2 locked-evidence and mandatory-confirmation invariants; those completion invariants are historically accurate but superseded by v1.4.
 - **v1.2 — 2026-07-20 — task `t_f9f6d927`:** Amended G3 to an iterative still-photo workflow. The MVP starts with one JPEG/JPG or PNG upload; a sufficient photo, including the first, may set `capture_complete=true` only to present an editable `serial_candidate` for explicit verification. Insufficient evidence produces one concrete next-photo movement/angle/lighting/quality action and another upload invitation, repeated as needed. Removed the hard two-frame agreement requirement, deferred continuous live-camera guidance to a later phase, and advanced the illustrative API/result contract to v2 because completion semantics, session mode, sequencing, and endpoints changed. Preserved the then-current never-machine-accept/mandatory-confirmation invariant (superseded by v1.4), G2 evidence requirements, browser-only scope, and unresolved G5–G8.
 - **v1.1 — 2026-07-20 — task `t_88bc938f`:** Incorporated confirmed G1–G4 decisions. Narrowed the object scope to plastic water bottles with ordinary printed wraparound barcode-bearing labels; defined the barcode as localization evidence rather than the final decoded value; made OCR a user-editable, then-never-machine-accepted `serial_candidate` (completion rule superseded by v1.4); approved the G2 locked-study protocol while withholding numeric claims; ratified the then-current single-upload `capture_complete=false` rule (superseded by v1.2); and established a browser-only desktop/mobile platform scope including iOS Safari and JPEG/PNG uploads. G5–G8 remain unresolved as stated.
 
-Downstream work MAY implement the localhost personal-test phases under this v1.5 architecture and PET while G2, executable-schema refinement beyond the thin v3.1 boundary, final model/licence selection, and resource budgets remain open, provided provisional values are never represented as validated. Ultralytics MUST NOT be distributed. Production, remote/multi-user, support/SLO, accessibility/localization, backup/export/review/training reuse, liveness, continuous-camera, or broader licensing decisions require a later amendment. Production launch remains unapproved.
+Downstream work MUST treat **v1.6 live 1D barcode framing** as the active personal-test product goal. Serial-OCR PET completion (§3.4) is deferred and must not be described as current success criteria. G2-style locked evidence is still required before any accuracy/ready-rate production-like claim. Executable-schema extensions for live readiness, final detector choice, licences, and resource budgets remain open. Ultralytics MUST NOT be distributed. Production, remote/multi-user, support/SLO, accessibility/localization, backup/export/review/training reuse, barcode **decode**, or broader licensing decisions require a later amendment. Production launch remains unapproved.
 
-This amendment’s automatic-completion exception is narrow: only the versioned §3.4 conjunction may create `final_serial` automatically. No guessed, silently corrected, uncalibrated, stale, unsupported, unknown, or gate-incomplete serial may be auto-submitted.
+If the deferred serial track is reactivated, only the versioned §3.4 conjunction may create `final_serial` automatically. No guessed, silently corrected, uncalibrated, stale, unsupported, unknown, or gate-incomplete serial may be auto-submitted. The active barcode MVP MUST NOT invent an equivalent silent accept path for undetected or multi-code scenes.
 
 Any amendment that changes scope, completion semantics, upload eligibility, data retention, deployment/auth model, status/schema meaning, movement convention, or quantitative release gate MUST:
 
@@ -666,5 +777,5 @@ Any amendment that changes scope, completion semantics, upload eligibility, data
 2. update the specification version and schema/policy version where applicable;
 3. add migration/compatibility and test impacts;
 4. update source traceability; and
-5. preserve the bounded automatic-completion conjunction, no-silent-repair rule, provenance/supersession, and the invariant that no guessed or gate-incomplete serial is auto-submitted.
+5. preserve abstain-on-ambiguous-target behavior for the active barcode MVP, and—if serial completion is reactivated—the bounded automatic-completion conjunction, no-silent-repair rule, provenance/supersession, and the invariant that no guessed or gate-incomplete serial is auto-submitted.
 
