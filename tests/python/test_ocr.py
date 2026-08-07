@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import FrozenInstanceError
 
 import numpy as np
@@ -12,7 +13,7 @@ from physical_vision_ocr import (
     OcrFailure,
     OcrFailureCode,
     OcrUsability,
-    run_tesseract_baseline,
+    run_ocr_baseline,
 )
 
 
@@ -29,7 +30,6 @@ def render_text_roi(text: str, *, size: tuple[int, int] = (280, 64)) -> np.ndarr
     image = Image.new("RGB", size, (255, 255, 255))
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default()
-    # Slight upscale-friendly large canvas with monospaced-ish default font
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x = max(4, (size[0] - tw) // 2)
@@ -57,19 +57,48 @@ class StubEngine:
         return self.text
 
 
-def test_default_ocr_config_is_frozen_versioned_recipe() -> None:
-    assert DEFAULT_OCR_CONFIG.version == "tesseract-ocr-baseline-v1"
-    assert DEFAULT_OCR_CONFIG.language == "eng"
+def test_default_ocr_config_is_frozen_paddle_recipe() -> None:
+    assert DEFAULT_OCR_CONFIG.version == "paddleocr-baseline-v1"
+    assert DEFAULT_OCR_CONFIG.language == "en"
+    assert DEFAULT_OCR_CONFIG.ocr_version == "PP-OCRv5"
+    assert DEFAULT_OCR_CONFIG.text_detection_model_name == "PP-OCRv5_mobile_det"
+    assert DEFAULT_OCR_CONFIG.text_recognition_model_name == "PP-OCRv5_mobile_rec"
+    assert DEFAULT_OCR_CONFIG.device == "cpu"
     with pytest.raises(FrozenInstanceError):
         DEFAULT_OCR_CONFIG.version = "tampered"  # type: ignore[misc]
 
 
-def test_ocr_config_rejects_unregistered_version() -> None:
+def test_ocr_config_rejects_unregistered_and_legacy_tesseract_versions() -> None:
+    for version in (
+        "tesseract-ocr-baseline-v1",
+        "tesseract-ocr-baseline-v0",
+        "paddleocr-baseline-v0",
+    ):
+        bad = OcrConfig(
+            version=version,
+            language="en",
+            ocr_version="PP-OCRv5",
+            text_detection_model_name="PP-OCRv5_mobile_det",
+            text_recognition_model_name="PP-OCRv5_mobile_rec",
+            device="cpu",
+            min_upscale_height=32,
+            max_image_pixels=4_000_000,
+            max_ocr_seconds=2.0,
+        )
+        with pytest.raises(OcrFailure) as raised:
+            bad.validate()
+        assert raised.value.code is OcrFailureCode.CONFIG_VERSION_UNSUPPORTED
+        assert raised.value.message_key == "OCR_CONFIG_VERSION_UNSUPPORTED"
+
+
+def test_ocr_config_rejects_non_cpu_device() -> None:
     bad = OcrConfig(
-        version="tesseract-ocr-baseline-v0",
-        language="eng",
-        psm=7,
-        oem=3,
+        version="paddleocr-baseline-v1",
+        language="en",
+        ocr_version="PP-OCRv5",
+        text_detection_model_name="PP-OCRv5_mobile_det",
+        text_recognition_model_name="PP-OCRv5_mobile_rec",
+        device="gpu:0",
         min_upscale_height=32,
         max_image_pixels=4_000_000,
         max_ocr_seconds=2.0,
@@ -77,46 +106,47 @@ def test_ocr_config_rejects_unregistered_version() -> None:
     with pytest.raises(OcrFailure) as raised:
         bad.validate()
     assert raised.value.code is OcrFailureCode.CONFIG_VERSION_UNSUPPORTED
-    assert raised.value.message_key == "OCR_CONFIG_VERSION_UNSUPPORTED"
+    assert raised.value.message_key == "OCR_CONFIG_DEVICE_UNSUPPORTED"
 
 
 def test_stubbed_engine_verbatim_passthrough_preserves_leading_zeros() -> None:
     roi = render_text_roi("00123-45")
     engine = StubEngine("00123-45")
-    evidence = run_tesseract_baseline(roi, engine=engine)
+    evidence = run_ocr_baseline(roi, engine=engine)
     assert isinstance(evidence, OcrEvidence)
     assert evidence.raw_string == "00123-45"
     assert evidence.displayed_string == "00123-45"
     assert evidence.usability is OcrUsability.USABLE
-    assert evidence.recipe_version == "tesseract-ocr-baseline-v1"
-    assert evidence.engine_name == "tesseract"
+    assert evidence.recipe_version == "paddleocr-baseline-v1"
+    assert evidence.engine_name == "paddleocr"
+    assert evidence.device == "cpu"
     assert evidence.raw_string == "00123-45"  # exact, no strip of zeros
 
 
 def test_stubbed_engine_does_not_repair_or_uppercase() -> None:
     engine = StubEngine("ab 12")
-    evidence = run_tesseract_baseline(render_text_roi("ab 12"), engine=engine)
+    evidence = run_ocr_baseline(render_text_roi("ab 12"), engine=engine)
     assert evidence.raw_string == "ab 12"
     assert evidence.raw_string != "AB12"
 
 
 def test_blank_roi_is_unreadable() -> None:
     engine = StubEngine("   \n  ")
-    evidence = run_tesseract_baseline(solid_rgb((80, 40), (255, 255, 255)), engine=engine)
+    evidence = run_ocr_baseline(solid_rgb((80, 40), (255, 255, 255)), engine=engine)
     assert evidence.usability is OcrUsability.UNREADABLE
     assert evidence.raw_string == "   \n  " or evidence.raw_string == engine.text
 
 
 def test_multiline_engine_output_is_ambiguous() -> None:
     engine = StubEngine("LINEONE\nLINETWO")
-    evidence = run_tesseract_baseline(render_text_roi("X"), engine=engine)
+    evidence = run_ocr_baseline(render_text_roi("X"), engine=engine)
     assert evidence.usability is OcrUsability.AMBIGUOUS
     assert evidence.raw_string == "LINEONE\nLINETWO"
 
 
 def test_empty_string_unreadable() -> None:
     engine = StubEngine("")
-    evidence = run_tesseract_baseline(solid_rgb((40, 20), (200, 200, 200)), engine=engine)
+    evidence = run_ocr_baseline(solid_rgb((40, 20), (200, 200, 200)), engine=engine)
     assert evidence.usability is OcrUsability.UNREADABLE
     assert evidence.raw_string == ""
 
@@ -127,11 +157,11 @@ def test_missing_dependency_is_typed_failure_not_crash() -> None:
             raise OcrFailure(
                 OcrFailureCode.DEPENDENCY_UNAVAILABLE,
                 "dependency",
-                "OCR_TESSERACT_UNAVAILABLE",
+                "OCR_PADDLEOCR_UNAVAILABLE",
             )
 
     with pytest.raises(OcrFailure) as raised:
-        run_tesseract_baseline(render_text_roi("1"), engine=MissingEngine())
+        run_ocr_baseline(render_text_roi("1"), engine=MissingEngine())
     assert raised.value.code is OcrFailureCode.DEPENDENCY_UNAVAILABLE
     assert raised.value.category == "dependency"
     text = " ".join(
@@ -149,12 +179,12 @@ def test_missing_dependency_is_typed_failure_not_crash() -> None:
 def test_timeout_and_cancel_are_content_free() -> None:
     roi = render_text_roi("123")
     with pytest.raises(OcrFailure) as raised:
-        run_tesseract_baseline(roi, engine=StubEngine("123"), cancelled=lambda: True)
+        run_ocr_baseline(roi, engine=StubEngine("123"), cancelled=lambda: True)
     assert raised.value.code is OcrFailureCode.OCR_BUDGET_EXCEEDED
     assert raised.value.category == "timeout"
 
     with pytest.raises(OcrFailure) as raised_deadline:
-        run_tesseract_baseline(
+        run_ocr_baseline(
             roi,
             engine=StubEngine("123"),
             deadline=0.0,
@@ -166,12 +196,12 @@ def test_timeout_and_cancel_are_content_free() -> None:
 def test_input_roi_buffer_not_mutated() -> None:
     roi = render_text_roi("42")
     original = roi.copy()
-    _ = run_tesseract_baseline(roi, engine=StubEngine("42"))
+    _ = run_ocr_baseline(roi, engine=StubEngine("42"))
     assert np.array_equal(roi, original)
 
 
 def test_evidence_immutable() -> None:
-    evidence = run_tesseract_baseline(render_text_roi("9"), engine=StubEngine("9"))
+    evidence = run_ocr_baseline(render_text_roi("9"), engine=StubEngine("9"))
     with pytest.raises(FrozenInstanceError):
         evidence.raw_string = "x"  # type: ignore[misc]
 
@@ -179,7 +209,7 @@ def test_evidence_immutable() -> None:
 def test_ocr_evidence_repr_omits_raw_and_displayed_payloads() -> None:
     """Serial-like OCR text must not appear in default repr (log hygiene)."""
     secret = "SN-SECRET-SERIAL-00123"
-    evidence = run_tesseract_baseline(render_text_roi("x"), engine=StubEngine(secret))
+    evidence = run_ocr_baseline(render_text_roi("x"), engine=StubEngine(secret))
     assert evidence.raw_string == secret
     assert evidence.displayed_string == secret
     text = repr(evidence)
@@ -194,23 +224,25 @@ def test_accepts_extracted_roi_from_geometry() -> None:
     canvas = solid_rgb((200, 100), (255, 255, 255))
     canvas[20:80, 20:180] = render_text_roi("77", size=(160, 60))
     roi = extract_roi_box(canvas, NormalizedBox(0.1, 0.2, 0.9, 0.8))
-    evidence = run_tesseract_baseline(roi, engine=StubEngine("77"))
+    evidence = run_ocr_baseline(roi, engine=StubEngine("77"))
     assert evidence.raw_string == "77"
     assert evidence.usability is OcrUsability.USABLE
 
 
 def test_image_budget_exceeded() -> None:
     config = OcrConfig(
-        version="tesseract-ocr-baseline-v1",
-        language="eng",
-        psm=7,
-        oem=3,
+        version="paddleocr-baseline-v1",
+        language="en",
+        ocr_version="PP-OCRv5",
+        text_detection_model_name="PP-OCRv5_mobile_det",
+        text_recognition_model_name="PP-OCRv5_mobile_rec",
+        device="cpu",
         min_upscale_height=32,
         max_image_pixels=10,
         max_ocr_seconds=2.0,
     )
     with pytest.raises(OcrFailure) as raised:
-        run_tesseract_baseline(
+        run_ocr_baseline(
             solid_rgb((20, 20), (0, 0, 0)),
             config=config,
             engine=StubEngine("x"),
@@ -218,53 +250,72 @@ def test_image_budget_exceeded() -> None:
     assert raised.value.code is OcrFailureCode.IMAGE_BUDGET_EXCEEDED
 
 
-def test_default_engine_missing_tesseract_maps_to_dependency_unavailable(
+def test_default_engine_missing_paddle_maps_to_dependency_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When pytesseract/binary is absent, public API returns typed dependency failure."""
+    """When paddleocr/paddlepaddle is absent, public API returns typed dependency failure."""
     import physical_vision_ocr as ocr_mod
 
     def boom(*_a, **_k):
         raise ocr_mod.OcrFailure(
             OcrFailureCode.DEPENDENCY_UNAVAILABLE,
             "dependency",
-            "OCR_TESSERACT_UNAVAILABLE",
+            "OCR_PADDLEOCR_UNAVAILABLE",
         )
 
-    monkeypatch.setattr(ocr_mod, "_default_tesseract_engine_run", boom)
+    monkeypatch.setattr(ocr_mod, "_default_paddleocr_engine_run", boom)
     with pytest.raises(OcrFailure) as raised:
-        run_tesseract_baseline(render_text_roi("1"), engine=None)
+        run_ocr_baseline(render_text_roi("1"), engine=None)
     assert raised.value.code is OcrFailureCode.DEPENDENCY_UNAVAILABLE
+    assert raised.value.message_key == "OCR_PADDLEOCR_UNAVAILABLE"
+
+
+def test_package_import_does_not_require_pytesseract() -> None:
+    import inspect
+
+    import physical_vision_ocr as ocr_mod
+
+    assert ocr_mod.DEFAULT_OCR_CONFIG.version == "paddleocr-baseline-v1"
+    # Default unit path must not hard-depend on pytesseract (removed from deps).
+    source = inspect.getsource(ocr_mod)
+    assert "pytesseract" not in source
+    assert "run_tesseract_baseline" not in source
+
+
+def _paddle_integration_enabled() -> bool:
+    if os.environ.get("PHYSICAL_VISION_PADDLE_OCR", "1") == "0":
+        return False
+    try:
+        import paddle  # noqa: F401
+        import paddleocr  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 @pytest.mark.integration
-def test_optional_real_tesseract_on_synthetic_digits() -> None:
-    """Gated real binary test — skips when Tesseract is not installed."""
-    pytest.importorskip("pytesseract")
-    import shutil
-
-    if shutil.which("tesseract") is None:
-        pytest.skip("tesseract binary not on PATH")
-    # Render larger text for default font readability under PSM 7.
+def test_optional_real_paddleocr_on_synthetic_digits() -> None:
+    """Gated real engine test — skips when Paddle stack is absent or disabled."""
+    if not _paddle_integration_enabled():
+        pytest.skip("paddleocr/paddlepaddle unavailable or PHYSICAL_VISION_PADDLE_OCR=0")
     from PIL import Image, ImageDraw, ImageFont
 
     image = Image.new("RGB", (400, 80), (255, 255, 255))
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default()
     draw.text((20, 20), "012345", fill=(0, 0, 0), font=font)
-    # Upscale to help Tesseract
     image = image.resize((800, 160), Image.Resampling.NEAREST)
     roi = np.asarray(image, dtype=np.uint8)
     try:
-        evidence = run_tesseract_baseline(roi)
+        evidence = run_ocr_baseline(roi)
     except OcrFailure as failure:
         if failure.code is OcrFailureCode.DEPENDENCY_UNAVAILABLE:
-            pytest.skip("tesseract dependency unavailable at runtime")
+            pytest.skip("paddleocr dependency unavailable at runtime")
         raise
-    # Real OCR may not be perfect on tiny default font; require digit presence without repair API.
-    assert evidence.recipe_version == "tesseract-ocr-baseline-v1"
+    assert evidence.recipe_version == "paddleocr-baseline-v1"
+    assert evidence.engine_name == "paddleocr"
     assert isinstance(evidence.raw_string, str)
-    # If usable, require digits-only alnum (no invented letters).
+    # Real OCR may not be perfect on tiny default font; require no invented repair API.
     if evidence.usability is OcrUsability.USABLE:
         cleaned = "".join(ch for ch in evidence.raw_string if ch.isalnum())
         assert cleaned == "" or all(ch in "0123456789" for ch in cleaned)

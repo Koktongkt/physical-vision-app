@@ -26,7 +26,7 @@ from physical_vision_localization import (  # noqa: E402
     propose_classical_regions,
     select_localization_summary,
 )
-from physical_vision_ocr import OcrFailure, OcrFailureCode, run_tesseract_baseline  # noqa: E402
+from physical_vision_ocr import OcrFailure, OcrFailureCode, run_ocr_baseline  # noqa: E402
 
 
 def _synthetic_scene() -> np.ndarray:
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics["roi_width"] = roi.width
         metrics["roi_height"] = roi.height
         try:
-            evidence = run_tesseract_baseline(roi)
+            evidence = run_ocr_baseline(roi)
             metrics["ocr_usability"] = evidence.usability.value
             metrics["ocr_raw_length"] = len(evidence.raw_string)
             metrics["ocr_elapsed_ms"] = evidence.elapsed_ms

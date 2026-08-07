@@ -12,6 +12,13 @@ from physical_vision_geometry import ExtractedRoi
 from physical_vision_image import CanonicalImage
 from PIL import Image
 
+_RECIPE_VERSION = "paddleocr-baseline-v1"
+_SUPPORTED_LANGUAGE = "en"
+_SUPPORTED_OCR_VERSION = "PP-OCRv5"
+_SUPPORTED_DET_MODEL = "PP-OCRv5_mobile_det"
+_SUPPORTED_REC_MODEL = "PP-OCRv5_mobile_rec"
+_SUPPORTED_DEVICE = "cpu"
+
 
 class OcrFailureCode(str, Enum):
     CONFIG_VERSION_UNSUPPORTED = "CONFIG_VERSION_UNSUPPORTED"
@@ -42,8 +49,10 @@ class OcrUsability(str, Enum):
 class OcrConfig:
     version: str
     language: str
-    psm: int
-    oem: int
+    ocr_version: str
+    text_detection_model_name: str
+    text_recognition_model_name: str
+    device: str
     min_upscale_height: int
     max_image_pixels: int
     max_ocr_seconds: float
@@ -55,29 +64,40 @@ class OcrConfig:
                 "unsupported-input",
                 "OCR_CONFIG_TYPE_UNSUPPORTED",
             )
-        if type(self.version) is not str or self.version != "tesseract-ocr-baseline-v1":
+        if type(self.version) is not str or self.version != _RECIPE_VERSION:
             raise OcrFailure(
                 OcrFailureCode.CONFIG_VERSION_UNSUPPORTED,
                 "unsupported-input",
                 "OCR_CONFIG_VERSION_UNSUPPORTED",
             )
-        if type(self.language) is not str or self.language != "eng":
+        if type(self.language) is not str or self.language != _SUPPORTED_LANGUAGE:
             raise OcrFailure(
                 OcrFailureCode.CONFIG_VERSION_UNSUPPORTED,
                 "unsupported-input",
                 "OCR_CONFIG_LANGUAGE_UNSUPPORTED",
             )
-        if type(self.psm) is not int or type(self.oem) is not int:
+        if type(self.ocr_version) is not str or self.ocr_version != _SUPPORTED_OCR_VERSION:
             raise OcrFailure(
                 OcrFailureCode.CONFIG_VERSION_UNSUPPORTED,
                 "unsupported-input",
                 "OCR_CONFIG_INVALID",
             )
-        if self.psm not in {6, 7, 8, 13} or self.oem not in {0, 1, 2, 3}:
+        if (
+            type(self.text_detection_model_name) is not str
+            or self.text_detection_model_name != _SUPPORTED_DET_MODEL
+            or type(self.text_recognition_model_name) is not str
+            or self.text_recognition_model_name != _SUPPORTED_REC_MODEL
+        ):
             raise OcrFailure(
                 OcrFailureCode.CONFIG_VERSION_UNSUPPORTED,
                 "unsupported-input",
                 "OCR_CONFIG_INVALID",
+            )
+        if type(self.device) is not str or self.device != _SUPPORTED_DEVICE:
+            raise OcrFailure(
+                OcrFailureCode.CONFIG_VERSION_UNSUPPORTED,
+                "unsupported-input",
+                "OCR_CONFIG_DEVICE_UNSUPPORTED",
             )
         if (
             type(self.min_upscale_height) is not int
@@ -96,10 +116,12 @@ class OcrConfig:
 
 
 DEFAULT_OCR_CONFIG = OcrConfig(
-    version="tesseract-ocr-baseline-v1",
-    language="eng",
-    psm=7,  # treat image as a single text line
-    oem=3,  # default engine mode
+    version=_RECIPE_VERSION,
+    language=_SUPPORTED_LANGUAGE,
+    ocr_version=_SUPPORTED_OCR_VERSION,
+    text_detection_model_name=_SUPPORTED_DET_MODEL,
+    text_recognition_model_name=_SUPPORTED_REC_MODEL,
+    device=_SUPPORTED_DEVICE,
     min_upscale_height=48,
     max_image_pixels=16_000_000,
     max_ocr_seconds=5.0,
@@ -119,8 +141,10 @@ class OcrEvidence:
     engine_name: str
     engine_version: str | None
     language: str
-    psm: int
-    oem: int
+    ocr_version: str
+    text_detection_model_name: str
+    text_recognition_model_name: str
+    device: str
     elapsed_ms: float
     raw_string: str = field(repr=False)
     displayed_string: str = field(repr=False)
@@ -252,66 +276,127 @@ def _classify_usability(raw: str) -> OcrUsability:
     return OcrUsability.USABLE
 
 
-def _default_tesseract_engine_run(image: np.ndarray, config: OcrConfig) -> str:
-    """Invoke system Tesseract via pytesseract. Payload/errors stay content-free at boundary."""
+def _extract_rec_texts(result: Any) -> list[str]:
+    """Normalize PaddleOCR 3.x predict() output into ordered recognition strings."""
+    texts: list[str] = []
+    if result is None:
+        return texts
+    items = result if isinstance(result, list | tuple) else [result]
+    for item in items:
+        if item is None:
+            continue
+        rec_texts = None
+        if isinstance(item, dict):
+            nested = item.get("res")
+            if isinstance(nested, dict) and "rec_texts" in nested:
+                rec_texts = nested.get("rec_texts")
+            else:
+                rec_texts = item.get("rec_texts")
+        else:
+            rec_texts = getattr(item, "rec_texts", None)
+            if rec_texts is None and hasattr(item, "get"):
+                try:
+                    rec_texts = item.get("rec_texts")  # type: ignore[union-attr]
+                except Exception:
+                    rec_texts = None
+        if rec_texts is None:
+            continue
+        for text in list(rec_texts):
+            if text is None:
+                continue
+            if type(text) is not str:
+                raise OcrFailure(
+                    OcrFailureCode.ENGINE_FAILURE,
+                    "dependency",
+                    "OCR_PADDLEOCR_ENGINE_FAILURE",
+                )
+            texts.append(text)
+    return texts
+
+
+def _default_paddleocr_engine_run(image: np.ndarray, config: OcrConfig) -> str:
+    """Invoke PaddleOCR on a caller-provided ROI. Payload/errors stay content-free."""
     try:
-        import pytesseract
-        from pytesseract import TesseractError, TesseractNotFoundError
+        from paddleocr import PaddleOCR
     except ImportError as exc:
         raise OcrFailure(
             OcrFailureCode.DEPENDENCY_UNAVAILABLE,
             "dependency",
-            "OCR_TESSERACT_UNAVAILABLE",
+            "OCR_PADDLEOCR_UNAVAILABLE",
         ) from exc
 
-    pil = Image.fromarray(image, mode="RGB")
-    tess_config = f"--oem {config.oem} --psm {config.psm}"
     try:
-        # verbatim=False is the default; we still do not post-process the string.
-        text = pytesseract.image_to_string(pil, lang=config.language, config=tess_config)
-    except TesseractNotFoundError as exc:
+        # CPU-only pin; optional doc modules off for single-line ROI baseline.
+        ocr = PaddleOCR(
+            lang=config.language,
+            ocr_version=config.ocr_version,
+            text_detection_model_name=config.text_detection_model_name,
+            text_recognition_model_name=config.text_recognition_model_name,
+            device=config.device,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
+        result = ocr.predict(image)
+    except OcrFailure:
+        raise
+    except ImportError as exc:
         raise OcrFailure(
             OcrFailureCode.DEPENDENCY_UNAVAILABLE,
             "dependency",
-            "OCR_TESSERACT_UNAVAILABLE",
-        ) from exc
-    except TesseractError as exc:
-        raise OcrFailure(
-            OcrFailureCode.ENGINE_FAILURE,
-            "dependency",
-            "OCR_TESSERACT_ENGINE_FAILURE",
+            "OCR_PADDLEOCR_UNAVAILABLE",
         ) from exc
     except OSError as exc:
         raise OcrFailure(
             OcrFailureCode.DEPENDENCY_UNAVAILABLE,
             "dependency",
-            "OCR_TESSERACT_UNAVAILABLE",
+            "OCR_PADDLEOCR_UNAVAILABLE",
         ) from exc
-    if type(text) is not str:
+    except Exception as exc:
+        # Model download / runtime failures stay content-free (no paths).
         raise OcrFailure(
             OcrFailureCode.ENGINE_FAILURE,
             "dependency",
-            "OCR_TESSERACT_ENGINE_FAILURE",
-        )
-    return text
+            "OCR_PADDLEOCR_ENGINE_FAILURE",
+        ) from exc
+
+    try:
+        texts = _extract_rec_texts(result)
+    except OcrFailure:
+        raise
+    except Exception as exc:
+        raise OcrFailure(
+            OcrFailureCode.ENGINE_FAILURE,
+            "dependency",
+            "OCR_PADDLEOCR_ENGINE_FAILURE",
+        ) from exc
+
+    # Single-region policy for caller-provided ROI crops:
+    # zero boxes → empty; one box → that string; many → newline join (ambiguous upstream).
+    non_empty = [t for t in texts if t.strip() != ""]
+    if len(non_empty) == 0:
+        return ""
+    if len(non_empty) == 1:
+        return non_empty[0]
+    return "\n".join(non_empty)
 
 
 def _resolve_engine_version() -> str | None:
     try:
-        import pytesseract
+        import paddleocr
 
-        version = pytesseract.get_tesseract_version()
-        return str(version)
+        version = getattr(paddleocr, "__version__", None)
+        return str(version) if version is not None else None
     except Exception:
         return None
 
 
-class _DefaultTesseractEngine:
+class _DefaultPaddleOcrEngine:
     def run(self, image: np.ndarray, config: OcrConfig) -> str:
-        return _default_tesseract_engine_run(image, config)
+        return _default_paddleocr_engine_run(image, config)
 
 
-def run_tesseract_baseline(
+def run_ocr_baseline(
     image: ExtractedRoi | CanonicalImage | Image.Image | np.ndarray,
     config: OcrConfig = DEFAULT_OCR_CONFIG,
     *,
@@ -320,10 +405,10 @@ def run_tesseract_baseline(
     cancelled: Callable[[], bool] | None = None,
     clock: Callable[[], float] = monotonic,
 ) -> OcrEvidence:
-    """Run the Tesseract single-line OCR baseline on a detached ROI image.
+    """Run the PaddleOCR single-line OCR baseline on a detached ROI image.
 
     Returns verbatim engine text with no format repair, checksum fix, case folding,
-    or silent character substitution. Missing Tesseract yields ``DEPENDENCY_UNAVAILABLE``.
+    or silent character substitution. Missing PaddleOCR yields ``DEPENDENCY_UNAVAILABLE``.
     """
     config.validate()
     started_at = clock()
@@ -332,7 +417,7 @@ def run_tesseract_baseline(
     prepared = _prepare_for_ocr(array, config)
     _check_time_budget(config, started_at, deadline, cancelled, clock)
 
-    active_engine: Any = engine if engine is not None else _DefaultTesseractEngine()
+    active_engine: Any = engine if engine is not None else _DefaultPaddleOcrEngine()
     try:
         raw = active_engine.run(prepared, config)
     except OcrFailure:
@@ -363,11 +448,13 @@ def run_tesseract_baseline(
     return OcrEvidence(
         usability=usability,
         recipe_version=config.version,
-        engine_name="tesseract",
+        engine_name="paddleocr",
         engine_version=engine_version,
         language=config.language,
-        psm=config.psm,
-        oem=config.oem,
+        ocr_version=config.ocr_version,
+        text_detection_model_name=config.text_detection_model_name,
+        text_recognition_model_name=config.text_recognition_model_name,
+        device=config.device,
         elapsed_ms=float(elapsed_ms),
         raw_string=raw,
         displayed_string=displayed,
@@ -382,5 +469,5 @@ __all__ = [
     "OcrFailure",
     "OcrFailureCode",
     "OcrUsability",
-    "run_tesseract_baseline",
+    "run_ocr_baseline",
 ]
