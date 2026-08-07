@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Physical Vision — barcode framing (Stage 6)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <h1>1D barcode framing</h1>
+        <p class="sub">
+          Live preview · detect only (no decode) · localhost Stage 6
+        </p>
+      </header>
+
+      <section class="stage" aria-label="Camera stage">
+        <div class="viewport" id="viewport">
+          <video id="preview" playsinline autoplay muted></video>
+          <canvas id="freeze" class="hidden" aria-hidden="true"></canvas>
+          <canvas id="overlay" aria-hidden="true"></canvas>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite">
+          Camera idle
+        </p>
+        <p id="error" class="error" role="alert" hidden></p>
+      </section>
+
+      <section class="controls" aria-label="Controls">
+        <label class="field">
+          API base
+          <input
+            id="apiBase"
+            type="text"
+            value="http://127.0.0.1:8000"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <div class="buttons">
+          <button type="button" id="btnStart">Start camera</button>
+          <button type="button" id="btnAnalyze" disabled>Analyze</button>
+          <button type="button" id="btnShutter" disabled>Shutter</button>
+          <button type="button" id="btnRetake" disabled>Retake</button>
+          <label class="check">
+            <input type="checkbox" id="autoSample" />
+            Auto-sample (≤5 Hz)
+          </label>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>
+          Does not display barcode payloads or serial numbers. Multiple barcodes
+          abstain. Preview stays in memory only.
+        </p>
+      </footer>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
