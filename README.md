@@ -15,7 +15,7 @@ A privacy-conscious, local-first application for extracting and evaluating physi
 - `services/api` — local API/service boundary
 - `packages/contracts` — shared versioned contracts
 - `packages/policy` — deterministic policy and safety rules
-- `packages/vision` — bounded safe image decode, OpenCV geometry/ROI/quality, and resource observation
+- `packages/vision` — bounded safe image decode, OpenCV geometry/ROI/quality, classical localization, Tesseract OCR baseline, and resource observation
 - `experiments/vision-baseline` — isolated vision experiments
 - `tests` — cross-component verification
 - `data/manifests` and `models/manifests` — metadata only; private data and weights are ignored
@@ -31,6 +31,14 @@ Stage 3 B02+B06 (bounded resource plan and safe Pillow decode) lives under
 
 Stage 4 B07 (OpenCV geometry, ROI/rectification, raw quality measurements, and
 overlay primitives) is implemented under `packages/vision` as
-`physical_vision_geometry`. Phase 2 is not fully closed: classical localization
-baseline (B08) and bake-offs remain later work. OCR/model inference, persistence,
-API, and UI behavior remain later-stage work.
+`physical_vision_geometry`.
+
+Stage 5 closes the **code/fixture portion of specification Phase 2**: classical
+barcode/contour localization and a Tesseract single-line OCR baseline under
+`packages/vision` as `physical_vision_localization` and `physical_vision_ocr`,
+with a thin experiment harness in `experiments/vision-baseline/`. Synthetic
+fixtures only. This is not product validation and does not claim bake-off winners.
+
+Still later: B08 physical/replayed adjudicated corpus, B09 classical-vs-box-vs-mask
+localization bake-off, B10 PP-OCR/SVTR OCR bake-off, API/UI, persistence, and
+policy/completion integration.

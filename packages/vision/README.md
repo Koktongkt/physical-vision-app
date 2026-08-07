@@ -28,4 +28,32 @@ It provides:
 
 Rectified crops are labeled `evidence_kind=rectified_derivative` and do not replace unrectified source ROI identity. Rectification does not claim recovery of hidden wraparound content. Failures are content-free typed codes/categories/message keys.
 
-This package is not a learned localizer, OCR engine, or policy decision boundary. Classical localization bake-off work remains B08/B09.
+This package is not a learned localizer, OCR engine, or policy decision boundary.
+
+## `physical_vision_localization` (Stage 5 / Phase 2 code baseline)
+
+Classical barcode/contour localization baseline. Frozen recipe
+`classical-localization-recipe-v1` proposes `barcode_landmark`, `label_region`,
+and optional near-barcode `text_region` geometry in canonical normalized
+coordinates. OpenCV barcode detector APIs may contribute geometry only —
+**payload strings/bytes are dropped at the boundary** and never appear on public
+results, logs, or metrics. Morphological gradient proposals cover synthetic
+high-contrast fixtures when the detector finds nothing. Deterministic
+`select_localization_summary` maps zero/one/many proposals to
+`trustworthy | no_label | multiple_labels | uncertain`.
+
+Not an open-world robust localizer and not a bake-off winner claim. Physical
+corpus work remains B08; classical-vs-learned bake-off remains B09.
+
+## `physical_vision_ocr` (Stage 5 / Phase 2 code baseline)
+
+Tesseract single-line / raw-line OCR baseline on a caller-provided detached ROI
+(`ExtractedRoi`, array, or Pillow image). Frozen recipe `tesseract-ocr-baseline-v1`
+(`eng`, PSM 7, OEM 3 by default). Returns immutable evidence with **verbatim**
+`raw_string` (no silent repair, case folding, checksum/format “helpfulness”).
+Usability labels `usable | unreadable | ambiguous` are **uncalibrated heuristics**.
+Missing Tesseract binary/data → typed `DEPENDENCY_UNAVAILABLE` (no interpreter
+crash). CI keeps stubbed engine tests always-on; optional
+`@pytest.mark.integration` real-binary test skips when `tesseract` is absent.
+
+Not PP-OCR/SVTR, not a production OCR claim, and not a policy/completion boundary.
