@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from math import isfinite
 from time import monotonic
@@ -108,10 +108,12 @@ DEFAULT_OCR_CONFIG = OcrConfig(
 
 @dataclass(frozen=True, slots=True)
 class OcrEvidence:
-    """Immutable OCR evidence. ``raw_string`` is verbatim engine output — no repair."""
+    """Immutable OCR evidence. ``raw_string`` is verbatim engine output — no repair.
 
-    raw_string: str
-    displayed_string: str
+    Serial-like ``raw_string`` / ``displayed_string`` are omitted from default ``repr``
+    so accidental logging cannot leak OCR payloads (same hygiene as B06/B07 pixel bytes).
+    """
+
     usability: OcrUsability
     recipe_version: str
     engine_name: str
@@ -120,6 +122,8 @@ class OcrEvidence:
     psm: int
     oem: int
     elapsed_ms: float
+    raw_string: str = field(repr=False)
+    displayed_string: str = field(repr=False)
     # Heuristic only; never a calibrated confidence claim.
     notes: tuple[str, ...] = ()
 
@@ -357,8 +361,6 @@ def run_tesseract_baseline(
     if engine is None:
         engine_version = _resolve_engine_version()
     return OcrEvidence(
-        raw_string=raw,
-        displayed_string=displayed,
         usability=usability,
         recipe_version=config.version,
         engine_name="tesseract",
@@ -367,6 +369,8 @@ def run_tesseract_baseline(
         psm=config.psm,
         oem=config.oem,
         elapsed_ms=float(elapsed_ms),
+        raw_string=raw,
+        displayed_string=displayed,
         notes=("usability_heuristic_uncalibrated",),
     )
 

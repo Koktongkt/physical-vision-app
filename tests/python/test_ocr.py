@@ -176,6 +176,20 @@ def test_evidence_immutable() -> None:
         evidence.raw_string = "x"  # type: ignore[misc]
 
 
+def test_ocr_evidence_repr_omits_raw_and_displayed_payloads() -> None:
+    """Serial-like OCR text must not appear in default repr (log hygiene)."""
+    secret = "SN-SECRET-SERIAL-00123"
+    evidence = run_tesseract_baseline(render_text_roi("x"), engine=StubEngine(secret))
+    assert evidence.raw_string == secret
+    assert evidence.displayed_string == secret
+    text = repr(evidence)
+    assert secret not in text
+    assert "SN-SECRET" not in text
+    assert "raw_string=" not in text
+    assert "displayed_string=" not in text
+    assert "usability=" in text
+
+
 def test_accepts_extracted_roi_from_geometry() -> None:
     canvas = solid_rgb((200, 100), (255, 255, 255))
     canvas[20:80, 20:180] = render_text_roi("77", size=(160, 60))
