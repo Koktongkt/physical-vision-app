@@ -8,7 +8,15 @@ dependencies = [
   "numpy==2.2.6",
   "opencv-python-headless==4.12.0.88",
   "pillow==12.3.0",
-  "pytesseract==0.3.13",
+]
+
+[project.optional-dependencies]
+# Optional real-engine OCR stack. Not installed by default CI (`uv sync --frozen`).
+# Unit tests stay stub-first; integration tests skip when these packages are absent
+# or when PHYSICAL_VISION_PADDLE_OCR=0.
+paddle-ocr = [
+  "paddleocr==3.7.0",
+  "paddlepaddle==3.3.1",
 ]
 
 [dependency-groups]
@@ -29,7 +37,7 @@ pythonpath = [
 ]
 addopts = "--strict-markers --strict-config"
 markers = [
-  "integration: optional tests requiring external binaries (e.g. Tesseract)",
+  "integration: optional tests requiring external OCR stack (e.g. PaddleOCR)",
 ]
 
 [tool.ruff]

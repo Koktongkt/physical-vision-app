@@ -12,7 +12,7 @@ from physical_vision_localization import (
     propose_classical_regions,
     select_localization_summary,
 )
-from physical_vision_ocr import OcrUsability, run_tesseract_baseline
+from physical_vision_ocr import OcrUsability, run_ocr_baseline
 from PIL import Image
 
 
@@ -84,10 +84,10 @@ def test_decode_propose_roi_ocr_smoke_end_to_end() -> None:
 
     roi = extract_roi_box(array, box)
     assert roi.width * roi.height > 0
-    evidence = run_tesseract_baseline(roi, engine=_StubOcr())
+    evidence = run_ocr_baseline(roi, engine=_StubOcr())
     assert evidence.raw_string == "00123"
     assert evidence.usability is OcrUsability.USABLE
-    assert evidence.recipe_version == "tesseract-ocr-baseline-v1"
+    assert evidence.recipe_version == "paddleocr-baseline-v1"
 
     # Content-free metrics shape for experiment harness consumers
     metrics = {

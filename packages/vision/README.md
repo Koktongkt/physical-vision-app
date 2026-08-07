@@ -45,15 +45,17 @@ high-contrast fixtures when the detector finds nothing. Deterministic
 Not an open-world robust localizer and not a bake-off winner claim. Physical
 corpus work remains B08; classical-vs-learned bake-off remains B09.
 
-## `physical_vision_ocr` (Stage 5 / Phase 2 code baseline)
+## `physical_vision_ocr` (Stage 5 / Stage 5b code baseline)
 
-Tesseract single-line / raw-line OCR baseline on a caller-provided detached ROI
-(`ExtractedRoi`, array, or Pillow image). Frozen recipe `tesseract-ocr-baseline-v1`
-(`eng`, PSM 7, OEM 3 by default). Returns immutable evidence with **verbatim**
+PaddleOCR single-line / ROI OCR baseline on a caller-provided detached ROI
+(`ExtractedRoi`, array, or Pillow image). Frozen recipe `paddleocr-baseline-v1`
+(`en`, PP-OCRv5 mobile det/rec, CPU-only). Returns immutable evidence with **verbatim**
 `raw_string` (no silent repair, case folding, checksum/format “helpfulness”).
 Usability labels `usable | unreadable | ambiguous` are **uncalibrated heuristics**.
-Missing Tesseract binary/data → typed `DEPENDENCY_UNAVAILABLE` (no interpreter
-crash). CI keeps stubbed engine tests always-on; optional
-`@pytest.mark.integration` real-binary test skips when `tesseract` is absent.
+Missing PaddleOCR/PaddlePaddle import or model runtime → typed
+`DEPENDENCY_UNAVAILABLE` (no interpreter crash). CI keeps stubbed engine tests
+always-on; optional `@pytest.mark.integration` real-engine test skips when the
+optional `paddle-ocr` extra is absent or `PHYSICAL_VISION_PADDLE_OCR=0`.
 
-Not PP-OCR/SVTR, not a production OCR claim, and not a policy/completion boundary.
+Not a B10 bake-off completion, not production-validated OCR, and not a
+policy/completion boundary. Tesseract is no longer the default runtime path.
