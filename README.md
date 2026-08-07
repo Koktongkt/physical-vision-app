@@ -42,7 +42,6 @@ First build (no PaddleOCR, no decode in product):
 
 Optional barcode **decode** stays offline-only as a scanner-readable diagnostic, not MVP UX.
 
-
 **Deferred:** serial OCR completion PET, barcode payload decode, bottle-only serial AR.
 
 Still not approved: production, remote/multi-user, Ultralytics distribution, or accuracy claims without locked evidence.
