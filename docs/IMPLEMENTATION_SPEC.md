@@ -3,7 +3,7 @@
 **Product:** Live-camera 1D barcode framing guidance MVP (personal localhost prototype)  
 **Specification status:** Approved for localhost-only, single-user personal prototype implementation and evaluation with G1–G8 history plus v1.6 Product Owner decisions D-BC-1..6; **not approved for production implementation, distribution of restricted model code/weights, remote availability, operational support, or launch**  
 **Version:** 1.6
-**Last amended:** 2026-08-07
+**Last amended:** 2026-08-07 (v1.6 + RI section 0.2 classical/OpenCV-first path)
 **Normative source tasks:** `t_edafa288`, `t_9db4b5de`, `t_3bb8d5b2`, `t_e3187d49`, `t_95ff3002`, `t_88bc938f`, `t_f9f6d927`, `t_9d8f876a`, `t_f8132754`, `t_fb42469a`, `t_afa75b47`, `t_577c72e6`, `t_b331c72a`, `t_e45e9c6b`
 
 ## 0. How to read this specification
@@ -41,6 +41,58 @@ Product Owner decisions **D-BC-1..6** (`t_b331c72a`):
 **Post-ready default:** after the user takes a picture from ready, freeze the captured frame and offer retake (return to live guide). No decode string.
 
 ---
+
+## 0.2 Recommended MVP implementation sequence (RI, v1.6)
+
+This RI freezes the **first engineering path** for the active barcode-framing MVP. It is not a bake-off winner claim and not a production accuracy claim. Change via ADR if measurements force a different detector.
+
+### 0.2.1 Detector path
+
+1. **Live / still spike (first):** OpenCV `barcode` detector **plus** the existing Stage 5 classical localization path (`physical_vision_localization`: OpenCV barcode proposals + morph/gradient barcode proposals).
+2. **Per-frame (or per-sample) outputs MUST include:**
+   - `barcode_count_1d` semantics: `none | one | multiple | unknown`
+   - when `one`: a single normalized box (payload/decode string **omitted** from product output)
+   - simple quality features for that box (see section 0.2.2)
+3. **Product decode policy:** barcode **payload decode is off** in the product path (D-BC-1). Optional decode MAY run only in offline experiments as a "scanner-readable?" diagnostic metric and MUST NOT be shown as MVP success.
+4. **Escalation:** only if measured recall is poor on real webcam/phone trials (small codes, angle, glare) MAY a one-class nano box detector exported to **ONNX + ORT** be introduced—still detect-only. Ultralytics remains non-distributable in the app artifact absent a new licence decision.
+5. **PaddleOCR / serial OCR** are **not** on this MVP path.
+
+### 0.2.2 Ready / green gates (geometry + quality, not a heavy net)
+
+**Ready** requires **all** of:
+
+| Gate | Intent | Initial seed (VT — calibrate later) |
+|---|---|---|
+| Exactly one 1D box | Abstain on 0 / 2+ (D-BC-2) | count == 1 |
+| Min area | Not a tiny speck | normalized area ≥ recipe min (start from classical `min_barcode_area_normalized`) |
+| Min short side (px) | Readable scale on the sensor | VT after pilot (e.g. short side ≥ 40–80 px at working resolution) |
+| Margins | Not clipped by frame edge | box inset from each image edge by VT margin fraction |
+| Blur | Sharp enough | Laplacian variance on box ROI ≥ VT |
+| Skew / aspect sanity | Plausible 1D barcode geometry | aspect within classical min/max barcode aspect; optional skew angle bound VT |
+| Exposure/glare (optional v1) | Not blown out | simple ROI mean/saturation guards as VT |
+
+If count ≠ 1 → **abstain** (no directional guidance, not ready).
+If count == 1 but any ready gate fails → **guidance** with **exactly one** camera-referent action derived from the dominant failing gate (e.g. too small → closer; clipped left → move camera right; blur → steady/closer).
+If all pass → **ready** (e.g. green) = user may take the picture.
+
+### 0.2.3 Delivery order (maps to B21–B26)
+
+1. **B21** Live camera client: permission, preview, bounded sample rate/resolution, shutter, freeze/retake.
+2. **B22** Wire OpenCV + Stage 5 classical barcode proposals → `none|one|multiple` + box + overlay (decode off).
+3. **B23** Quality features + ready gates + green ready UI.
+4. **B24** One-action guidance from dominant failing gate.
+5. **B25** Ephemeral preview, resource budgets, loopback/privacy.
+6. **B26** Measure misses on webcam/phone; public-supplement offline metrics only as secondary; escalate to ONNX nano only if justified.
+
+### 0.2.4 Explicit non-goals for this RI
+
+- Shipping PaddleOCR/Tesseract for the barcode MVP
+- Product-facing barcode payload strings
+- Multi-barcode "pick largest" heuristics
+- Declaring classical or ONNX detectors validated without live pilot evidence
+
+---
+
 ## 1. Product objective and target users
 
 ### 1.1 Objective
@@ -586,7 +638,7 @@ These omissions are explicit backlog work, not implicit approvals.
 
 ## 14. Recommended implementation phases and acceptance gates
 
-**v1.6 critical path note:** implement **live 1D detect → quality → one-action guide → ready UI → user capture** next. Serial-oriented Phase 3 OCR bake-offs (B10) and serial completion integration are **deferred** unless reactivated. Classical barcode localization and quality/geometry from Phase 2 remain on the path. Public barcode corpora may accelerate detector work under D-BC-6.
+**v1.6 critical path note:** implement **section 0.2** — live 1D detect (OpenCV + Stage 5 classical) → quality/ready gates → one-action guide → green UI → user capture. Serial-oriented Phase 3 OCR bake-offs (B10) and serial completion integration are **deferred** unless reactivated. Classical barcode localization and quality/geometry from Phase 2 remain on the path. Public barcode corpora may accelerate detector work under D-BC-6.
 
 ### Phase 0 — Decisions, licences, and evidence foundation
 **Work:** freeze v3 contracts/terminology, G2 preregistration, data/provenance/retention plan, licence register, resource instrumentation, and versioned PET configuration.  
@@ -708,7 +760,7 @@ The table defines dependency and acceptance ownership. Completion status is trac
 
 ### 17.1 Amendment history
 
-- **v1.6 — 2026-08-07 — Product Owner — decision `t_b331c72a`, amendment `t_e45e9c6b`:** Pivoted the **active** localhost MVP from still-photo serial-OCR completion to **live 1D barcode framing guidance**. Approved D-BC-1..6: detect-only (no payload decode), abstain on zero/multiple 1D codes, 1D-only targets, live guide until ready with green-style **user may shoot** notification and human shutter, any-single-barcode subject scope, public datasets as training/supplement only. Promoted live camera path into MVP scope (§3.0/§3.3); marked bottle+serial OCR AR, barcode-as-landmark-only rule, and §3.4 serial PET completion as **deferred historical track**. Added backlog B21–B26. Stages 1–5b remain valid infrastructure provenance. No production/decode/serial claim authorized.
+- **v1.6 — 2026-08-07 — Product Owner — decision `t_b331c72a`, amendment `t_e45e9c6b`:** Pivoted the **active** localhost MVP from still-photo serial-OCR completion to **live 1D barcode framing guidance**. Approved D-BC-1..6: detect-only (no payload decode), abstain on zero/multiple 1D codes, 1D-only targets, live guide until ready with green-style **user may shoot** notification and human shutter, any-single-barcode subject scope, public datasets as training/supplement only. Promoted live camera path into MVP scope (§3.0/§3.3); marked bottle+serial OCR AR, barcode-as-landmark-only rule, and §3.4 serial PET completion as **deferred historical track**. Added backlog B21–B26. Stages 1–5b remain valid infrastructure provenance. No production/decode/serial claim authorized. Follow-on on the same amendment PR: added **section 0.2 RI** locking OpenCV barcode + Stage 5 classical path first, geometry/quality ready gates, decode-off, ONNX nano only on measured miss, PaddleOCR off-path.
 - **v1.5 — 2026-08-01 — Product Owner — decision `t_afa75b47`, implementation `t_577c72e6`:** Affected §§5.4–5.5, 8.1, 14–17. Approved the smallest additive executable contract v3.1 prerequisite and narrowed B04 to the pure current-snapshot policy core. Added typed support/localization/OCR reasons, an explicit nullable reliability-qualified camera correction candidate, and `camera_up`/`camera_down` policy actions without prose or overlays. Preserved v3.0 and every Stage 1 PET/gate/unknown/verbatim/status/action/linkage invariant. Compatibility impact: validators continue accepting declared v3.0 documents; v3.1 consumers explicitly opt into and regenerate only the evidence/policy 1.1 bindings; outer result/completion migration remains B13/B14 work, with no silent component mixing. Deferred admission, privacy, resources, dependencies, session/transport, retention, replay-flow integration, completion/correction/supersession, UI, exhaustive testing, and physical qualification to their existing backlog gates. This simplification is sequencing only, not a validated policy, physical-guidance, PET, or product claim.
 - **v1.4 — 2026-07-26 — task `t_fb42469a`:** Incorporated Product Owner approvals A1–A15/D1–D7 from `docs/research/AI_VISION_ARCHITECTURE_RESEARCH.md` / `t_f8132754`. Approved the bounded Pillow/OpenCV hybrid pipeline, localization/quality/OCR bake-offs, conditional learned heads, PP-OCRv6 benchmark qualification, ONNX Runtime CPU baseline, deterministic evidence/policy boundary, grouped locked evaluation framework, resource observability, replay qualification, camera-only wording, licensing restrictions, and full local evidence/completion supersession. Superseded universal never-machine-accept/mandatory-confirmation wording: automatic completion is permitted only when the calibrated whole-string estimate is strictly greater than the versioned PET `0.80` and every required current-attempt gate passes with no unknown/blocker; otherwise candidate/user/guidance paths apply. The PET is not a validated or production claim and remains subject to G2 replacement/reaffirmation.
 - **v1.3 — 2026-07-23 — task `t_9d8f876a`:** Resolved G5–G8 for a one-user visual personal test. Fixed deployment to same-machine localhost with no authentication, accounts, tenancy, anonymous remote access, production availability, or support commitment. Approved local retention of screen-capture and smartphone-camera photos together with linked analysis and model/policy/preprocessing/calibration/schema versions until manual pair deletion; ordinary uploads remain ephemeral. Set best-effort processing with measured latency, no formal SLO and no guidance-attempt ceiling, while preserving terminal/user exits and provisional pre-decode/decompression/local-storage guards; model input size is not a product upload cap. Limited the prototype to English visual guidance with on-image overlays/arrows and physical direction/angle/distance/lighting text, no formal accessibility target, and still capture rather than continuous guidance. Advanced the additive illustrative result schema to v2.1. Preserved the then-current G2 locked-evidence and mandatory-confirmation invariants; those completion invariants are historically accurate but superseded by v1.4.

@@ -28,7 +28,20 @@ A privacy-conscious, local-first browser application that helps a user **frame o
 
 **Engineering already on `main` (Stages 1–5b):** contracts v3.0/v3.1, thin policy, safe Pillow decode, OpenCV geometry, classical localization, PaddleOCR baseline (parked for serial track). These are infrastructure — not a completed live barcode product.
 
-**Next critical path:** B21–B26 style work — live camera client, 1D detect/count, ready gates + green UI, one-action guidance, live privacy/resource hardening, then live pilot evidence.
+**Next critical path:** B21–B26 per spec section 0.2 — live camera client, OpenCV+classical 1D detect/count, quality ready/green UI, one-action guidance, live privacy/resource hardening, then live pilot evidence.
+
+## MVP implementation path (RI)
+
+First build (no PaddleOCR, no decode in product):
+
+1. **Live camera** — permission, preview, bounded sampling, shutter, freeze/retake
+2. **Detect** — OpenCV barcode detector + existing Stage 5 classical barcode proposals → `none | one | multiple` + box
+3. **Ready/green** — geometry/quality only: one box, min area/short side, margins, blur (Laplacian), aspect/skew sanity
+4. **Guide** — exactly one camera-referent action from the dominant failing gate; abstain if not exactly one barcode
+5. **Escalate later only if needed** — one-class nano detector → ONNX/ORT after measured misses on real devices
+
+Optional barcode **decode** stays offline-only as a scanner-readable diagnostic, not MVP UX.
+
 
 **Deferred:** serial OCR completion PET, barcode payload decode, bottle-only serial AR.
 
