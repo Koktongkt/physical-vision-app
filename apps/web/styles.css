@@ -68,10 +68,23 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  background: transparent;
+}
+
+/* Stack: video under freeze under overlay. Empty canvas must stay transparent. */
+#preview {
+  z-index: 1;
+}
+
+#freeze {
+  z-index: 2;
 }
 
 #overlay {
+  z-index: 3;
   pointer-events: none;
+  /* Avoid some GPU paths treating an untouched canvas as opaque black. */
+  background: transparent;
 }
 
 .hidden {

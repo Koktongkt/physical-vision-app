@@ -56,7 +56,18 @@ npx --yes serve apps/web -l 5173
 python -m http.server 5173 --directory apps/web
 ```
 
-Open `http://127.0.0.1:5173`. Confirm the API base field matches the uvicorn origin. Click **Start camera**, allow permission, then **Analyze** (or enable auto-sample).
+Open **`http://127.0.0.1:5173`** (not `file://`). Confirm the API base field matches the uvicorn origin. Click **Start camera**, allow permission, then **Analyze** (or enable auto-sample).
+
+### Black preview?
+
+A black rectangle is **not** the intended “empty stub” UI — the stage background is black until real camera frames paint. If it stays black after Start camera:
+
+1. Use `http://127.0.0.1:5173` or `http://localhost:5173` (secure context). `file://` often breaks `getUserMedia`.
+2. Allow camera permission for that origin in the browser.
+3. Windows: **Settings → Privacy & security → Camera** — allow desktop apps / browser; close Zoom/Teams/etc. that may lock the device.
+4. Laptop lid privacy shutter / Fn camera key.
+5. Status line should move to **Live — searching…** when frames arrive; if you see **Live — black/no frames**, the track opened without dimensions (device/driver).
+6. API being down only affects **Analyze**, not the live preview.
 
 ## Notes
 
