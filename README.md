@@ -28,7 +28,9 @@ A privacy-conscious, local-first browser application that helps a user **frame o
 
 **Engineering already on `main` (Stages 1–5b):** contracts v3.0/v3.1, thin policy, safe Pillow decode, OpenCV geometry, classical localization, PaddleOCR baseline (parked for serial track). These are infrastructure — not a completed live barcode product.
 
-**Next critical path:** B21–B26 per spec section 0.2 — live camera client, OpenCV+classical 1D detect/count, quality ready/green UI, one-action guidance, live privacy/resource hardening, then live pilot evidence.
+**Stage 6 (this branch — B21+B22 vertical slice):** `physical_vision_barcode` analyze API (`none|one|multiple` + box, decode off), localhost FastAPI `POST /v1/barcode/analyze`, and `apps/web` live preview + shutter/retake + overlay. Composes Stage 5 classical localization. Ready/green gates (B23) and multi-action guidance (B24) remain out of scope. Not a claim of live pilot validation.
+
+**Next critical path after Stage 6 merge:** B23 quality/ready UI, B24 one-action guidance, B25 privacy/resource hardening, B26 live pilot evidence.
 
 ## MVP implementation path (RI)
 
@@ -45,3 +47,16 @@ Optional barcode **decode** stays offline-only as a scanner-readable diagnostic,
 **Deferred:** serial OCR completion PET, barcode payload decode, bottle-only serial AR.
 
 Still not approved: production, remote/multi-user, Ultralytics distribution, or accuracy claims without locked evidence.
+
+## Local Stage 6 smoke (camera optional)
+
+```bash
+# API (loopback)
+uvx --from uv==0.11.31 uv run python scripts/run_local_barcode_api.py
+
+# Web static client (separate terminal)
+python -m http.server 5173 --directory apps/web
+# open http://127.0.0.1:5173 — Start camera → Analyze / Shutter / Retake
+```
+
+Automated tests do not require a camera. See `apps/web/README.md` and `services/api/README.md`.

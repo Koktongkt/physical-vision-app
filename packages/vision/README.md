@@ -59,3 +59,22 @@ optional `paddle-ocr` extra is absent or `PHYSICAL_VISION_PADDLE_OCR=0`.
 
 Not a B10 bake-off completion, not production-validated OCR, and not a
 policy/completion boundary. Tesseract is no longer the default runtime path.
+
+## `physical_vision_barcode` (Stage 6 / B22 detect wiring)
+
+Live-framing barcode **count + box** boundary. Frozen recipe
+`barcode-frame-analyze-v1` composes Stage 5 `propose_classical_regions` and
+**filters to `barcode_landmark` proposals only** (label/text proposals do not
+affect count policy). Maps:
+
+- 0 barcodes → `count_status=none`, `barcode_box=null`
+- 1 barcode → `one` + that normalized box
+- 2+ barcodes → `multiple`, `barcode_box=null` (no pick-largest)
+
+OpenCV barcode detector geometry may contribute via localization; **payload
+strings/bytes are dropped at the localization boundary** and never appear on
+`BarcodeFrameEvidence`. Injectable `propose_regions` supports unit tests without
+relying on detector behavior on synthetic noise.
+
+Not B23 ready/green calibration, not B24 guidance, not a decode UX, and not a
+policy/completion boundary.

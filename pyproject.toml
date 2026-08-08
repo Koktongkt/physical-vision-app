@@ -4,10 +4,13 @@ version = "0.1.0"
 description = "Executable contract validation for the localhost physical vision prototype"
 requires-python = ">=3.11,<3.15"
 dependencies = [
+  "fastapi==0.116.1",
   "jsonschema==4.25.1",
   "numpy==2.2.6",
   "opencv-python-headless==4.12.0.88",
   "pillow==12.3.0",
+  "python-multipart==0.0.20",
+  "uvicorn==0.35.0",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +24,7 @@ paddle-ocr = [
 
 [dependency-groups]
 dev = [
+  "httpx==0.28.1",
   "pytest==8.4.1",
   "ruff==0.12.7",
 ]
@@ -34,6 +38,7 @@ pythonpath = [
   "packages/contracts/python",
   "packages/policy/python",
   "packages/vision/python",
+  "services/api/python",
 ]
 addopts = "--strict-markers --strict-config"
 markers = [
