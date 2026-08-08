@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
@@ -8,7 +8,7 @@ from time import monotonic
 from typing import Any, Protocol
 
 import numpy as np
-from physical_vision_geometry import ExtractedRoi, NormalizedBox
+from physical_vision_geometry import ExtractedRoi, NormalizedBox, measure_raw_quality
 from physical_vision_image import CanonicalImage
 from physical_vision_localization import (
     DEFAULT_LOCALIZATION_CONFIG,
@@ -21,8 +21,21 @@ from physical_vision_localization import (
 )
 from PIL import Image
 
-_RECIPE_VERSION = "barcode-frame-analyze-v1"
+_RECIPE_VERSION = "barcode-frame-ready-v1"
 _LOCALIZATION_RECIPE = "classical-localization-recipe-v1"
+
+# Fixed VT gate priority (first failing wins dominant action). Documented as VT seeds.
+_DEFAULT_GATE_PRIORITY: tuple[str, ...] = (
+    "min_area",
+    "min_short_side_px",
+    "margin_left",
+    "margin_right",
+    "margin_top",
+    "margin_bottom",
+    "blur",
+    "aspect",
+    "exposure",
+)
 
 
 class BarcodeFrameFailureCode(str, Enum):
@@ -47,12 +60,54 @@ class BarcodeCountStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class BarcodeReadiness(str, Enum):
+    ABSTAIN = "abstain"
+    GUIDANCE = "guidance"
+    READY = "ready"
+
+
+class BarcodeGuidanceAction(str, Enum):
+    NONE = "none"
+    CAMERA_CLOSER = "camera_closer"
+    CAMERA_FARTHER = "camera_farther"
+    CAMERA_LEFT = "camera_left"
+    CAMERA_RIGHT = "camera_right"
+    CAMERA_UP = "camera_up"
+    CAMERA_DOWN = "camera_down"
+    CAMERA_STEADY = "camera_steady"
+    REDUCE_GLARE = "reduce_glare"
+
+
+@dataclass(frozen=True, slots=True)
+class BarcodeQualityMetrics:
+    """Content-free quality scalars for a single barcode box (no image bytes)."""
+
+    area_normalized: float
+    short_side_px: float
+    margin_left: float
+    margin_right: float
+    margin_top: float
+    margin_bottom: float
+    laplacian_variance: float
+    aspect_ratio: float
+    exposure_mean: float
+
+
 @dataclass(frozen=True, slots=True)
 class BarcodeFrameConfig:
     version: str
     max_image_pixels: int
     max_analyze_seconds: float
     localization_config_version: str
+    min_area_normalized: float
+    min_short_side_px: int
+    margin_frac: float
+    min_laplacian_variance: float
+    min_aspect_ratio: float
+    max_aspect_ratio: float
+    exposure_high: float
+    exposure_low: float
+    gate_priority: tuple[str, ...]
 
     def validate(self) -> None:
         if type(self) is not BarcodeFrameConfig:
@@ -92,6 +147,51 @@ class BarcodeFrameConfig:
                 "unsupported-input",
                 "BARCODE_FRAME_CONFIG_INVALID",
             )
+        if type(self.min_short_side_px) is not int or self.min_short_side_px < 0:
+            raise BarcodeFrameFailure(
+                BarcodeFrameFailureCode.CONFIG_VERSION_UNSUPPORTED,
+                "unsupported-input",
+                "BARCODE_FRAME_CONFIG_INVALID",
+            )
+        floats = (
+            self.min_area_normalized,
+            self.margin_frac,
+            self.min_laplacian_variance,
+            self.min_aspect_ratio,
+            self.max_aspect_ratio,
+            self.exposure_high,
+            self.exposure_low,
+        )
+        if any(type(value) is not float or not isfinite(value) for value in floats):
+            raise BarcodeFrameFailure(
+                BarcodeFrameFailureCode.CONFIG_VERSION_UNSUPPORTED,
+                "unsupported-input",
+                "BARCODE_FRAME_CONFIG_INVALID",
+            )
+        if not (
+            0.0 < self.min_area_normalized < 1.0
+            and 0.0 <= self.margin_frac < 0.5
+            and self.min_laplacian_variance >= 0.0
+            and 0.0 < self.min_aspect_ratio < self.max_aspect_ratio
+            and 0.0 <= self.exposure_low < self.exposure_high <= 255.0
+        ):
+            raise BarcodeFrameFailure(
+                BarcodeFrameFailureCode.CONFIG_VERSION_UNSUPPORTED,
+                "unsupported-input",
+                "BARCODE_FRAME_CONFIG_INVALID",
+            )
+        if not isinstance(self.gate_priority, tuple) or not self.gate_priority:
+            raise BarcodeFrameFailure(
+                BarcodeFrameFailureCode.CONFIG_VERSION_UNSUPPORTED,
+                "unsupported-input",
+                "BARCODE_FRAME_CONFIG_INVALID",
+            )
+        if any(type(item) is not str or not item for item in self.gate_priority):
+            raise BarcodeFrameFailure(
+                BarcodeFrameFailureCode.CONFIG_VERSION_UNSUPPORTED,
+                "unsupported-input",
+                "BARCODE_FRAME_CONFIG_INVALID",
+            )
 
 
 DEFAULT_BARCODE_FRAME_CONFIG = BarcodeFrameConfig(
@@ -99,6 +199,16 @@ DEFAULT_BARCODE_FRAME_CONFIG = BarcodeFrameConfig(
     max_image_pixels=DEFAULT_LOCALIZATION_CONFIG.max_image_pixels,
     max_analyze_seconds=2.0,
     localization_config_version=_LOCALIZATION_RECIPE,
+    # VT seeds (spec §0.2.2) — not calibrated production thresholds.
+    min_area_normalized=DEFAULT_LOCALIZATION_CONFIG.min_barcode_area_normalized,
+    min_short_side_px=48,
+    margin_frac=0.04,
+    min_laplacian_variance=50.0,
+    min_aspect_ratio=DEFAULT_LOCALIZATION_CONFIG.min_barcode_aspect_ratio,
+    max_aspect_ratio=DEFAULT_LOCALIZATION_CONFIG.max_barcode_aspect_ratio,
+    exposure_high=245.0,
+    exposure_low=12.0,
+    gate_priority=_DEFAULT_GATE_PRIORITY,
 )
 
 
@@ -114,6 +224,10 @@ class BarcodeFrameEvidence:
     proposal_sources: tuple[str, ...]
     elapsed_ms: float
     recipe_version: str
+    readiness: BarcodeReadiness
+    guidance_action: BarcodeGuidanceAction
+    failing_gates: tuple[str, ...]
+    quality: BarcodeQualityMetrics | None
 
 
 class RegionProposer(Protocol):
@@ -262,6 +376,142 @@ def _map_localization_failure(exc: LocalizationFailure) -> BarcodeFrameFailure:
     )
 
 
+def _measure_quality(array: np.ndarray, box: NormalizedBox) -> BarcodeQualityMetrics:
+    height, width = array.shape[:2]
+    x0, y0, x1, y1 = box.to_pixel_bounds((width, height))
+    short_side_px = float(min(x1 - x0, y1 - y0))
+    width_n = box.width()
+    height_n = box.height()
+    aspect = width_n / height_n if height_n > 0.0 else float("inf")
+    raw = measure_raw_quality(array, box)
+    lap = float(raw.blur.value) if raw.blur.value is not None else 0.0
+    exposure = float(raw.exposure.value) if raw.exposure.value is not None else 0.0
+    return BarcodeQualityMetrics(
+        area_normalized=float(box.area()),
+        short_side_px=short_side_px,
+        margin_left=float(box.x0),
+        margin_right=float(1.0 - box.x1),
+        margin_top=float(box.y0),
+        margin_bottom=float(1.0 - box.y1),
+        laplacian_variance=lap,
+        aspect_ratio=float(aspect),
+        exposure_mean=exposure,
+    )
+
+
+def _gate_failures(
+    quality: BarcodeQualityMetrics,
+    config: BarcodeFrameConfig,
+) -> list[str]:
+    failed: list[str] = []
+    if quality.area_normalized < config.min_area_normalized:
+        failed.append("min_area")
+    if quality.short_side_px < float(config.min_short_side_px):
+        failed.append("min_short_side_px")
+    if quality.margin_left < config.margin_frac:
+        failed.append("margin_left")
+    if quality.margin_right < config.margin_frac:
+        failed.append("margin_right")
+    if quality.margin_top < config.margin_frac:
+        failed.append("margin_top")
+    if quality.margin_bottom < config.margin_frac:
+        failed.append("margin_bottom")
+    if quality.laplacian_variance < config.min_laplacian_variance:
+        failed.append("blur")
+    if (
+        quality.aspect_ratio < config.min_aspect_ratio
+        or quality.aspect_ratio > config.max_aspect_ratio
+    ):
+        failed.append("aspect")
+    if (
+        quality.exposure_mean >= config.exposure_high
+        or quality.exposure_mean <= config.exposure_low
+    ):
+        failed.append("exposure")
+    return failed
+
+
+def _action_for_gate(
+    gate_id: str,
+    quality: BarcodeQualityMetrics,
+    config: BarcodeFrameConfig,
+) -> BarcodeGuidanceAction:
+    if gate_id == "min_area" or gate_id == "min_short_side_px":
+        return BarcodeGuidanceAction.CAMERA_CLOSER
+    if gate_id == "margin_left":
+        # Camera-referent: left-clipped → move camera right (table §card).
+        return BarcodeGuidanceAction.CAMERA_RIGHT
+    if gate_id == "margin_right":
+        return BarcodeGuidanceAction.CAMERA_LEFT
+    if gate_id == "margin_top":
+        return BarcodeGuidanceAction.CAMERA_DOWN
+    if gate_id == "margin_bottom":
+        return BarcodeGuidanceAction.CAMERA_UP
+    if gate_id == "blur":
+        return BarcodeGuidanceAction.CAMERA_STEADY
+    if gate_id == "aspect":
+        # Deterministic: too thin/tall (low aspect) → closer; too wide → farther.
+        if quality.aspect_ratio < config.min_aspect_ratio:
+            return BarcodeGuidanceAction.CAMERA_CLOSER
+        return BarcodeGuidanceAction.CAMERA_FARTHER
+    if gate_id == "exposure":
+        if quality.exposure_mean >= config.exposure_high:
+            return BarcodeGuidanceAction.REDUCE_GLARE
+        return BarcodeGuidanceAction.CAMERA_STEADY
+    return BarcodeGuidanceAction.CAMERA_STEADY
+
+
+def _order_failing_gates(
+    failed: Sequence[str],
+    priority: Sequence[str],
+) -> tuple[str, ...]:
+    failed_set = set(failed)
+    ordered = [gate for gate in priority if gate in failed_set]
+    # Any unexpected gate ids append after configured priority (stable).
+    extras = [gate for gate in failed if gate not in priority]
+    return tuple(ordered + extras)
+
+
+def _evaluate_readiness(
+    count_status: BarcodeCountStatus,
+    box: NormalizedBox | None,
+    array: np.ndarray,
+    config: BarcodeFrameConfig,
+) -> tuple[
+    BarcodeReadiness,
+    BarcodeGuidanceAction,
+    tuple[str, ...],
+    BarcodeQualityMetrics | None,
+]:
+    if count_status is not BarcodeCountStatus.ONE or box is None:
+        return (
+            BarcodeReadiness.ABSTAIN,
+            BarcodeGuidanceAction.NONE,
+            (),
+            None,
+        )
+
+    quality = _measure_quality(array, box)
+    failed = _gate_failures(quality, config)
+    if not failed:
+        return (
+            BarcodeReadiness.READY,
+            BarcodeGuidanceAction.NONE,
+            (),
+            quality,
+        )
+
+    ordered = _order_failing_gates(failed, config.gate_priority)
+    dominant = ordered[0]
+    action = _action_for_gate(dominant, quality, config)
+    return (
+        BarcodeReadiness.GUIDANCE,
+        action,
+        ordered,
+        quality,
+    )
+
+
 def analyze_barcode_frame(
     image: ExtractedRoi | CanonicalImage | Image.Image | np.ndarray,
     config: BarcodeFrameConfig = DEFAULT_BARCODE_FRAME_CONFIG,
@@ -272,12 +522,12 @@ def analyze_barcode_frame(
     cancelled: Callable[[], bool] | None = None,
     clock: Callable[[], float] = monotonic,
 ) -> BarcodeFrameEvidence:
-    """Analyze a frame for 1D barcode count/geometry only (decode off).
+    """Analyze a frame for 1D barcode count/geometry and ready/guidance (decode off).
 
     Composes Stage 5 ``propose_classical_regions`` and filters to
-    ``barcode_landmark`` proposals. Zero → none, one → one + box, two+ →
-    multiple with box=None (no pick-largest). Detector payload strings are never
-    admitted onto evidence.
+    ``barcode_landmark`` proposals. Zero → none/abstain, one → gates →
+    ready|guidance, two+ → multiple/abstain with box=None (no pick-largest).
+    Detector payload strings are never admitted onto evidence.
     """
     config.validate()
     started_at = clock()
@@ -331,6 +581,8 @@ def analyze_barcode_frame(
         status = BarcodeCountStatus.MULTIPLE
         box = None
 
+    readiness, action, failing, quality = _evaluate_readiness(status, box, array, config)
+
     _check_time_budget(config, started_at, deadline, cancelled, clock)
     elapsed_ms = (clock() - started_at) * 1000.0
     return BarcodeFrameEvidence(
@@ -339,6 +591,10 @@ def analyze_barcode_frame(
         proposal_sources=sources,
         elapsed_ms=float(elapsed_ms),
         recipe_version=config.version,
+        readiness=readiness,
+        guidance_action=action,
+        failing_gates=failing,
+        quality=quality,
     )
 
 
@@ -349,6 +605,9 @@ __all__ = [
     "BarcodeFrameEvidence",
     "BarcodeFrameFailure",
     "BarcodeFrameFailureCode",
+    "BarcodeGuidanceAction",
+    "BarcodeQualityMetrics",
+    "BarcodeReadiness",
     "RegionProposer",
     "analyze_barcode_frame",
 ]

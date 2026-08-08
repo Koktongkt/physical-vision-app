@@ -87,7 +87,7 @@ def _result(proposals: tuple[RegionProposal, ...]) -> LocalizationResult:
 def test_default_barcode_frame_config_is_frozen_versioned_recipe() -> None:
     from physical_vision_barcode import DEFAULT_BARCODE_FRAME_CONFIG
 
-    assert DEFAULT_BARCODE_FRAME_CONFIG.version == "barcode-frame-analyze-v1"
+    assert DEFAULT_BARCODE_FRAME_CONFIG.version == "barcode-frame-ready-v1"
     with pytest.raises(FrozenInstanceError):
         DEFAULT_BARCODE_FRAME_CONFIG.version = "tampered"  # type: ignore[misc]
 
@@ -99,7 +99,7 @@ def test_blank_image_yields_none_without_injection() -> None:
     evidence = analyze_barcode_frame(image)
     assert evidence.count_status is BarcodeCountStatus.NONE
     assert evidence.barcode_box is None
-    assert evidence.recipe_version == "barcode-frame-analyze-v1"
+    assert evidence.recipe_version == "barcode-frame-ready-v1"
     assert evidence.elapsed_ms >= 0.0
 
 
@@ -200,18 +200,15 @@ def test_barcode_like_synthetic_may_find_one_via_classical_path() -> None:
 
 
 def test_config_rejects_unregistered_version() -> None:
+    from dataclasses import replace
+
     from physical_vision_barcode import (
-        BarcodeFrameConfig,
+        DEFAULT_BARCODE_FRAME_CONFIG,
         BarcodeFrameFailure,
         BarcodeFrameFailureCode,
     )
 
-    bad = BarcodeFrameConfig(
-        version="barcode-frame-analyze-v0",
-        max_image_pixels=1_000_000,
-        max_analyze_seconds=1.0,
-        localization_config_version="classical-localization-recipe-v1",
-    )
+    bad = replace(DEFAULT_BARCODE_FRAME_CONFIG, version="barcode-frame-analyze-v0")
     with pytest.raises(BarcodeFrameFailure) as raised:
         bad.validate()
     assert raised.value.code is BarcodeFrameFailureCode.CONFIG_VERSION_UNSUPPORTED
@@ -219,23 +216,284 @@ def test_config_rejects_unregistered_version() -> None:
 
 
 def test_oversize_image_budget_fails_content_free() -> None:
+    from dataclasses import replace
+
     from physical_vision_barcode import (
         DEFAULT_BARCODE_FRAME_CONFIG,
-        BarcodeFrameConfig,
         BarcodeFrameFailure,
         BarcodeFrameFailureCode,
         analyze_barcode_frame,
     )
 
-    tiny = BarcodeFrameConfig(
-        version=DEFAULT_BARCODE_FRAME_CONFIG.version,
-        max_image_pixels=100,
-        max_analyze_seconds=2.0,
-        localization_config_version=DEFAULT_BARCODE_FRAME_CONFIG.localization_config_version,
-    )
+    tiny = replace(DEFAULT_BARCODE_FRAME_CONFIG, max_image_pixels=100)
     image = solid_rgb((40, 40), (1, 1, 1))
     with pytest.raises(BarcodeFrameFailure) as raised:
         analyze_barcode_frame(image, config=tiny)
     assert raised.value.code is BarcodeFrameFailureCode.IMAGE_BUDGET_EXCEEDED
     assert raised.value.category == "local-resource"
     assert "BARCODE_FRAME" in raised.value.message_key
+
+
+# --- Stage 7 B23+B24: readiness gates + one-action guidance ---
+
+
+def _sharp_barcode_roi(
+    size: tuple[int, int],
+    box: NormalizedBox,
+    *,
+    luma: int = 120,
+) -> np.ndarray:
+    """Fill image with mid-gray and paint a high-contrast bar pattern in ``box``."""
+    image = solid_rgb(size, (luma, luma, luma))
+    w, h = size
+    x0 = int(box.x0 * w)
+    y0 = int(box.y0 * h)
+    x1 = max(x0 + 1, int(box.x1 * w))
+    y1 = max(y0 + 1, int(box.y1 * h))
+    x = x0
+    toggle = True
+    while x < x1:
+        # Equal-width dark/light bands keep ROI exposure near mid-range.
+        band = 3
+        level = 30 if toggle else 200
+        image[y0:y1, x : min(x + band, x1)] = level
+        x += band
+        toggle = not toggle
+    return image
+
+
+def test_none_count_is_abstain_with_no_action() -> None:
+    from physical_vision_barcode import (
+        BarcodeCountStatus,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result(())
+
+    evidence = analyze_barcode_frame(solid_rgb((120, 90), (50, 50, 50)), propose_regions=propose)
+    assert evidence.count_status is BarcodeCountStatus.NONE
+    assert evidence.readiness is BarcodeReadiness.ABSTAIN
+    assert evidence.guidance_action is BarcodeGuidanceAction.NONE
+    assert evidence.failing_gates == ()
+    assert evidence.barcode_box is None
+
+
+def test_multiple_count_is_abstain_with_no_action() -> None:
+    from physical_vision_barcode import (
+        BarcodeCountStatus,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    a = NormalizedBox(0.1, 0.2, 0.4, 0.45)
+    b = NormalizedBox(0.55, 0.2, 0.9, 0.45)
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(a), _proposal(b)))
+
+    evidence = analyze_barcode_frame(solid_rgb((200, 120), (30, 30, 30)), propose_regions=propose)
+    assert evidence.count_status is BarcodeCountStatus.MULTIPLE
+    assert evidence.readiness is BarcodeReadiness.ABSTAIN
+    assert evidence.guidance_action is BarcodeGuidanceAction.NONE
+    assert evidence.failing_gates == ()
+
+
+def test_one_all_gates_pass_is_ready() -> None:
+    from physical_vision_barcode import (
+        BarcodeCountStatus,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    # Centered large barcode-like region on 400x300 frame.
+    box = NormalizedBox(0.2, 0.35, 0.8, 0.65)
+    image = _sharp_barcode_roi((400, 300), box)
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, propose_regions=propose)
+    assert evidence.count_status is BarcodeCountStatus.ONE
+    assert evidence.readiness is BarcodeReadiness.READY
+    assert evidence.guidance_action is BarcodeGuidanceAction.NONE
+    assert evidence.failing_gates == ()
+    assert evidence.quality is not None
+    assert evidence.quality.area_normalized >= 0.002
+    assert evidence.recipe_version == "barcode-frame-ready-v1"
+
+
+def test_one_tiny_area_guides_camera_closer() -> None:
+    from dataclasses import replace
+
+    from physical_vision_barcode import (
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    # Area 0.04*0.04 = 0.0016 < default min 0.002; short side may also fail but
+    # min_area is first in priority → camera_closer.
+    box = NormalizedBox(0.48, 0.48, 0.52, 0.52)
+    image = _sharp_barcode_roi((400, 400), box)
+    config = replace(DEFAULT_BARCODE_FRAME_CONFIG, min_short_side_px=1)
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, config=config, propose_regions=propose)
+    assert evidence.readiness is BarcodeReadiness.GUIDANCE
+    assert evidence.guidance_action is BarcodeGuidanceAction.CAMERA_CLOSER
+    assert "min_area" in evidence.failing_gates
+    assert evidence.failing_gates[0] == "min_area"
+
+
+def test_one_clipped_left_guides_camera_right() -> None:
+    from dataclasses import replace
+
+    from physical_vision_barcode import (
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    # Left edge at 0.0 → margin_left fails; keep area/short-side/blur healthy.
+    box = NormalizedBox(0.0, 0.35, 0.55, 0.65)
+    image = _sharp_barcode_roi((400, 300), box)
+    config = replace(
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        min_area_normalized=0.001,
+        min_short_side_px=10,
+        min_laplacian_variance=1.0,
+    )
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, config=config, propose_regions=propose)
+    assert evidence.readiness is BarcodeReadiness.GUIDANCE
+    assert evidence.guidance_action is BarcodeGuidanceAction.CAMERA_RIGHT
+    assert "margin_left" in evidence.failing_gates
+    # Exactly one action enum (not a list of actions).
+    assert isinstance(evidence.guidance_action, BarcodeGuidanceAction)
+
+
+def test_one_low_blur_guides_camera_steady() -> None:
+    from dataclasses import replace
+
+    from physical_vision_barcode import (
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    box = NormalizedBox(0.2, 0.35, 0.8, 0.65)
+    # Uniform ROI → near-zero Laplacian variance.
+    image = solid_rgb((400, 300), (128, 128, 128))
+    config = replace(
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        min_area_normalized=0.001,
+        min_short_side_px=10,
+        min_laplacian_variance=50.0,
+        min_aspect_ratio=0.1,
+        max_aspect_ratio=100.0,
+    )
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, config=config, propose_regions=propose)
+    assert evidence.readiness is BarcodeReadiness.GUIDANCE
+    assert evidence.guidance_action is BarcodeGuidanceAction.CAMERA_STEADY
+    assert "blur" in evidence.failing_gates
+
+
+def test_guidance_never_returns_two_actions() -> None:
+    from dataclasses import replace
+
+    from physical_vision_barcode import (
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    # Tiny + left-clipped → multiple gates fail, still one dominant action.
+    box = NormalizedBox(0.0, 0.48, 0.03, 0.52)
+    image = solid_rgb((300, 300), (100, 100, 100))
+    config = replace(DEFAULT_BARCODE_FRAME_CONFIG, min_laplacian_variance=1.0)
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, config=config, propose_regions=propose)
+    assert evidence.readiness is BarcodeReadiness.GUIDANCE
+    assert evidence.guidance_action is not BarcodeGuidanceAction.NONE
+    # Single enum value — not a collection of actions.
+    assert type(evidence.guidance_action) is BarcodeGuidanceAction
+    assert evidence.guidance_action is not BarcodeGuidanceAction.NONE
+
+
+def test_priority_picks_higher_gate_when_two_fail() -> None:
+    from dataclasses import replace
+
+    from physical_vision_barcode import (
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        BarcodeGuidanceAction,
+        BarcodeReadiness,
+        analyze_barcode_frame,
+    )
+
+    # Fails min_area (priority) and margin_left; dominant must be min_area → closer.
+    box = NormalizedBox(0.0, 0.49, 0.02, 0.51)
+    image = _sharp_barcode_roi((500, 500), box)
+    config = replace(
+        DEFAULT_BARCODE_FRAME_CONFIG,
+        min_area_normalized=0.01,
+        min_short_side_px=1,
+        min_laplacian_variance=0.0,
+        min_aspect_ratio=0.01,
+        max_aspect_ratio=1000.0,
+    )
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, config=config, propose_regions=propose)
+    assert evidence.readiness is BarcodeReadiness.GUIDANCE
+    assert evidence.failing_gates[0] == "min_area"
+    assert evidence.guidance_action is BarcodeGuidanceAction.CAMERA_CLOSER
+    assert "margin_left" in evidence.failing_gates
+
+
+def test_evidence_json_and_repr_have_no_payload_fields_with_readiness() -> None:
+    from physical_vision_barcode import analyze_barcode_frame
+
+    box = NormalizedBox(0.2, 0.35, 0.8, 0.65)
+    image = _sharp_barcode_roi((400, 300), box)
+
+    def propose(_image, _config=None, **_kwargs):
+        return _result((_proposal(box),))
+
+    evidence = analyze_barcode_frame(image, propose_regions=propose)
+    text = repr(evidence).lower()
+    assert "payload" not in text
+    assert "decoded" not in text
+    fields = getattr(evidence, "__dataclass_fields__", {})
+    for banned in ("payload", "decoded", "raw_string", "serial"):
+        assert banned not in fields
+        assert not any(banned in name.lower() for name in fields)
+
+
+def test_ready_gate_config_version_is_ready_v1() -> None:
+    from physical_vision_barcode import DEFAULT_BARCODE_FRAME_CONFIG
+
+    assert DEFAULT_BARCODE_FRAME_CONFIG.version == "barcode-frame-ready-v1"
+    assert DEFAULT_BARCODE_FRAME_CONFIG.gate_priority[0] == "min_area"
