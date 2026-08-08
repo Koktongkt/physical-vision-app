@@ -238,70 +238,6 @@ async function analyzeOnce() {
   }
 }
 
-/**
- * Prefer a simple laptop/webcam stream first. `facingMode: environment` is for
- * phones; on many desktops it yields a black or failed track.
- * @returns {Promise<MediaStream>}
- */
-async function openCameraStream() {
-  const attempts = [
-    {
-      audio: false,
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    },
-    // Fallback: any camera at all.
-    { audio: false, video: true },
-    // Phones: rear camera if available.
-    {
-      audio: false,
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    },
-  ];
-  let lastErr = null;
-  for (const constraints of attempts) {
-    try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  throw lastErr || new Error("getUserMedia failed");
-}
-
-/**
- * Wait until the video element has real dimensions (or timeout).
- * @param {HTMLVideoElement} video
- * @param {number} timeoutMs
- */
-function waitForVideoDimensions(video, timeoutMs = 4000) {
-  if (video.videoWidth > 0 && video.videoHeight > 0) {
-    return Promise.resolve(true);
-  }
-  return new Promise((resolve) => {
-    const onReady = () => {
-      cleanup();
-      resolve(video.videoWidth > 0 && video.videoHeight > 0);
-    };
-    const timer = window.setTimeout(onReady, timeoutMs);
-    const cleanup = () => {
-      window.clearTimeout(timer);
-      video.removeEventListener("loadedmetadata", onReady);
-      video.removeEventListener("loadeddata", onReady);
-      video.removeEventListener("playing", onReady);
-    };
-    video.addEventListener("loadedmetadata", onReady);
-    video.addEventListener("loadeddata", onReady);
-    video.addEventListener("playing", onReady);
-  });
-}
-
 async function startCamera() {
   setError("");
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -309,21 +245,15 @@ async function startCamera() {
     setError("This browser does not expose getUserMedia.");
     return;
   }
-  // Secure context required (http://127.0.0.1 / localhost / https). file:// often fails.
-  if (!window.isSecureContext) {
-    setStatus("Insecure context", "error");
-    setError(
-      "Open via http://127.0.0.1:5173 (python -m http.server), not file://.",
-    );
-    return;
-  }
   try {
-    // Stop any previous stream first.
-    if (stream) {
-      for (const track of stream.getTracks()) track.stop();
-      stream = null;
-    }
-    stream = await openCameraStream();
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    });
   } catch (err) {
     stream = null;
     setStatus("Camera permission denied", "error");
@@ -340,33 +270,12 @@ async function startCamera() {
     return;
   }
   els.preview.srcObject = stream;
-  els.preview.muted = true;
-  els.preview.playsInline = true;
   mode = "live";
   els.freeze.classList.add("hidden");
   els.preview.classList.remove("hidden");
-  clearOverlay();
-  try {
-    await els.preview.play();
-  } catch (err) {
-    setStatus("Preview blocked", "error");
-    setError(
-      err instanceof Error
-        ? `Video play() failed: ${err.message}`
-        : "Video play() failed.",
-    );
-  }
+  await els.preview.play().catch(() => {});
   resizeCanvases();
-  const hasFrames = await waitForVideoDimensions(els.preview);
-  if (!hasFrames) {
-    setStatus("Live — black/no frames", "error");
-    setError(
-      "Camera track opened but no video frames yet. Check Windows camera privacy (Settings → Privacy → Camera), close other apps using the webcam, and confirm the correct camera is enabled. Then click Start camera again.",
-    );
-  } else {
-    setStatus("Live — searching…", "searching");
-    setError("");
-  }
+  setStatus("Live — searching…", "searching");
   syncButtons();
   if (els.autoSample.checked) startAutoSample();
 }
