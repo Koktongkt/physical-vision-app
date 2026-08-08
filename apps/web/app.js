@@ -1,10 +1,24 @@
 /**
- * Stage 6 live barcode framing client (B21 + B22 wiring).
- * No decode/serial display. Preview frames stay in memory.
+ * Stage 7 live barcode framing client (B21–B24).
+ * Ready/green gates + one-action camera guidance. No decode/serial display.
+ * Preview frames stay in memory.
  */
 
 const MAX_SAMPLE_HZ = 5;
 const MIN_SAMPLE_MS = Math.ceil(1000 / MAX_SAMPLE_HZ);
+
+/** Camera-referent English copy for guidance_action enum values. */
+const GUIDANCE_COPY = {
+  none: "",
+  camera_closer: "Move the camera closer.",
+  camera_farther: "Move the camera farther away.",
+  camera_left: "Move the camera left.",
+  camera_right: "Move the camera right.",
+  camera_up: "Move the camera up.",
+  camera_down: "Move the camera down.",
+  camera_steady: "Hold the camera steady.",
+  reduce_glare: "Move the camera or light to reduce glare.",
+};
 
 const els = {
   preview: document.getElementById("preview"),
@@ -103,8 +117,9 @@ function clearOverlay() {
 
 /**
  * @param {{x0:number,y0:number,x1:number,y1:number} | null | undefined} box
+ * @param {"ready" | "guidance" | "neutral"} style
  */
-function drawOverlayBox(box) {
+function drawOverlayBox(box, style = "neutral") {
   clearOverlay();
   if (!box) return;
   const ctx = els.overlay.getContext("2d");
@@ -137,26 +152,51 @@ function drawOverlayBox(box) {
   const y = dy + box.y0 * dh;
   const w = (box.x1 - box.x0) * dw;
   const h = (box.y1 - box.y0) * dh;
-  ctx.strokeStyle = "#5dffa6";
+  if (style === "ready") {
+    ctx.strokeStyle = "#3dff8a";
+  } else if (style === "guidance") {
+    ctx.strokeStyle = "#4f8cff";
+  } else {
+    ctx.strokeStyle = "#5dffa6";
+  }
   ctx.lineWidth = Math.max(2, Math.round(Math.min(cw, ch) * 0.006));
   ctx.strokeRect(x, y, w, h);
 }
 
+/**
+ * @param {object | null | undefined} result
+ */
 function applyResult(result) {
   lastResult = result;
-  const status = result?.count_status;
-  if (status === "one") {
-    setStatus("One barcode", "one");
-    drawOverlayBox(result.barcode_box);
-  } else if (status === "multiple") {
+  const readiness = result?.readiness;
+  const count = result?.count_status;
+  const action = result?.guidance_action || "none";
+
+  if (readiness === "ready") {
+    setStatus("Ready — you may take the picture", "ready");
+    drawOverlayBox(result.barcode_box, "ready");
+    return;
+  }
+  if (readiness === "guidance") {
+    const copy = GUIDANCE_COPY[action] || "Adjust the camera.";
+    setStatus(copy, "guidance");
+    drawOverlayBox(result.barcode_box, "guidance");
+    return;
+  }
+  // abstain or missing readiness: count-based copy, no directional action
+  if (count === "multiple") {
     setStatus("Multiple barcodes — abstain", "multiple");
     clearOverlay();
-  } else if (status === "none") {
+  } else if (count === "none") {
     setStatus("No barcode", "none");
     clearOverlay();
-  } else if (status === "unknown") {
-    setStatus("Unknown", "searching");
+  } else if (count === "unknown") {
+    setStatus("Unknown — abstain", "searching");
     clearOverlay();
+  } else if (count === "one") {
+    // one without readiness (older server) — show box neutrally
+    setStatus("One barcode", "one");
+    drawOverlayBox(result.barcode_box, "neutral");
   } else {
     setStatus("Searching…", "searching");
     clearOverlay();
@@ -306,16 +346,27 @@ function shutter() {
   els.preview.classList.add("hidden");
   mode = "frozen";
   stopAutoSample();
-  // Keep lastResult overlay.
-  if (lastResult?.count_status === "one") {
-    drawOverlayBox(lastResult.barcode_box);
-    setStatus("Frozen — one barcode", "one");
+  // Keep lastResult overlay with frozen prefix.
+  if (lastResult?.readiness === "ready") {
+    drawOverlayBox(lastResult.barcode_box, "ready");
+    setStatus("Frozen — Ready (you may keep this picture)", "ready");
+  } else if (lastResult?.readiness === "guidance") {
+    const action = lastResult.guidance_action || "none";
+    const copy = GUIDANCE_COPY[action] || "Adjust the camera.";
+    drawOverlayBox(lastResult.barcode_box, "guidance");
+    setStatus(`Frozen — ${copy}`, "guidance");
   } else if (lastResult?.count_status === "multiple") {
     setStatus("Frozen — multiple (abstain)", "multiple");
+    clearOverlay();
   } else if (lastResult?.count_status === "none") {
     setStatus("Frozen — no barcode", "none");
+    clearOverlay();
+  } else if (lastResult?.count_status === "one") {
+    drawOverlayBox(lastResult.barcode_box, "neutral");
+    setStatus("Frozen — one barcode", "one");
   } else {
     setStatus("Frozen frame", "searching");
+    clearOverlay();
   }
   syncButtons();
 }
@@ -347,8 +398,14 @@ els.autoSample.addEventListener("change", () => {
 
 window.addEventListener("resize", () => {
   resizeCanvases();
-  if (lastResult?.count_status === "one")
-    drawOverlayBox(lastResult.barcode_box);
+  if (!lastResult) return;
+  if (lastResult.readiness === "ready") {
+    drawOverlayBox(lastResult.barcode_box, "ready");
+  } else if (lastResult.readiness === "guidance") {
+    drawOverlayBox(lastResult.barcode_box, "guidance");
+  } else if (lastResult.count_status === "one") {
+    drawOverlayBox(lastResult.barcode_box, "neutral");
+  }
 });
 
 setStatus("Camera idle", "searching");

@@ -1,12 +1,15 @@
-# apps/web — Stage 6 live barcode framing client
+# apps/web — Stage 7 live barcode framing client
 
-Minimal localhost browser UI for **B21 + B22 wiring**:
+Minimal localhost browser UI for **B21–B24**:
 
 - camera permission + live `<video>` preview
 - Analyze button and optional auto-sample capped at **5 Hz**
-- overlay box when API returns `count_status=one`
-- status text for searching / one / multiple (abstain) / none
-- **Shutter** freezes the current frame on a canvas (keeps last result)
+- readiness-driven status chrome:
+  - **ready** → green “Ready — you may take the picture”
+  - **guidance** → exactly one English camera-referent cue from `guidance_action`
+  - **abstain** → none/multiple/unknown copy (no directional action)
+- overlay: green box when ready; accent when guidance; none when abstain
+- **Shutter** freezes the current frame on a canvas (keeps last result; human-only, no auto-capture)
 - **Retake** returns to live preview
 - **never** displays decode payloads or serial strings
 
@@ -60,6 +63,6 @@ Open `http://127.0.0.1:5173`. Confirm the API base field matches the uvicorn ori
 
 ## Notes
 
-- CI cannot open a camera; Python unit/API tests cover detect wiring without hardware.
-- Ready/green quality gates (B23) and multi-action guidance (B24) are out of Stage 6 scope.
+- CI cannot open a camera; Python unit/API tests cover detect + readiness without hardware.
+- Decode remains off. Thresholds are VT seeds, not calibrated production ready rates.
 - Preview frames are not written to disk by this client.

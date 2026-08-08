@@ -165,6 +165,13 @@ button:disabled {
 .status[data-kind="one"] {
   color: #7ddea2;
 }
+.status[data-kind="ready"] {
+  color: #3dff8a;
+  text-shadow: 0 0 12px rgba(61, 255, 138, 0.35);
+}
+.status[data-kind="guidance"] {
+  color: var(--accent);
+}
 .status[data-kind="multiple"] {
   color: var(--warn);
 }

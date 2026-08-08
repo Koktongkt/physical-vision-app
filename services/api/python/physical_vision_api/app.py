@@ -72,12 +72,29 @@ def _evidence_json(evidence: BarcodeFrameEvidence) -> dict[str, Any]:
             "x1": evidence.barcode_box.x1,
             "y1": evidence.barcode_box.y1,
         }
+    quality = None
+    if evidence.quality is not None:
+        quality = {
+            "area_normalized": evidence.quality.area_normalized,
+            "short_side_px": evidence.quality.short_side_px,
+            "margin_left": evidence.quality.margin_left,
+            "margin_right": evidence.quality.margin_right,
+            "margin_top": evidence.quality.margin_top,
+            "margin_bottom": evidence.quality.margin_bottom,
+            "laplacian_variance": evidence.quality.laplacian_variance,
+            "aspect_ratio": evidence.quality.aspect_ratio,
+            "exposure_mean": evidence.quality.exposure_mean,
+        }
     return {
         "count_status": evidence.count_status.value,
         "barcode_box": box,
         "proposal_sources": list(evidence.proposal_sources),
         "elapsed_ms": evidence.elapsed_ms,
         "recipe_version": evidence.recipe_version,
+        "readiness": evidence.readiness.value,
+        "guidance_action": evidence.guidance_action.value,
+        "failing_gates": list(evidence.failing_gates),
+        "quality": quality,
     }
 
 
