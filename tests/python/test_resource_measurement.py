@@ -5,7 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from physical_vision_resources import measure_synthetic_decode_workload
+from physical_vision_resources import (
+    measure_synthetic_decode_workload,
+    measure_synthetic_live_analyze_workload,
+    observe_live_resources,
+)
 
 ROOT = Path(__file__).parents[2]
 
@@ -56,3 +60,83 @@ def test_measurement_cli_emits_only_json_report() -> None:
     report = json.loads(completed.stdout)
     assert report["workload"]["width"] == 16
     assert report["observation"]["successful_decodes"] == 2
+
+
+def test_live_resource_snapshot_uses_fixed_content_free_schema() -> None:
+    snapshot = observe_live_resources(in_flight=1, max_in_flight=1)
+
+    assert set(snapshot) == {
+        "schema_version",
+        "policy_version",
+        "elapsed_ms",
+        "process_rss_bytes",
+        "host_available_memory_bytes",
+        "in_flight",
+        "max_in_flight",
+        "gpu",
+    }
+    assert snapshot["schema_version"] == "live-resource-observation-v1"
+    assert snapshot["policy_version"] == "live-resource-policy-v1"
+    assert snapshot["in_flight"] == 1
+    assert snapshot["max_in_flight"] == 1
+    assert snapshot["gpu"]["status"] in {"observed", "unavailable"}
+    serialized = json.dumps(snapshot, sort_keys=True).lower()
+    for forbidden in (
+        "barcode",
+        "decoded",
+        "ocr",
+        "serial",
+        "payload",
+        "filename",
+        "input_path",
+        "origin",
+        "request",
+        "exception",
+        "session",
+        "user",
+    ):
+        assert forbidden not in serialized
+
+
+def test_synthetic_live_analysis_measurement_is_bounded_and_content_free() -> None:
+    report = measure_synthetic_live_analyze_workload(iterations=2, size=(32, 24))
+
+    assert report["schema_version"] == "live-resource-measurement-v1"
+    assert report["policy_version"] == "live-resource-policy-v1"
+    assert report["workload"] == {
+        "fixture_kind": "synthetic-solid-color",
+        "width": 32,
+        "height": 24,
+        "iterations": 2,
+        "max_in_flight": 1,
+        "timeout_seconds": 2.0,
+    }
+    assert report["observation"]["successful_analyses"] == 2
+    assert report["observation"]["failed_analyses"] == 0
+    serialized = json.dumps(report, sort_keys=True).lower()
+    for forbidden in ("image_bytes", "ocr", "serial", "payload", "input_path", "filename"):
+        assert forbidden not in serialized
+
+
+def test_live_measurement_cli_emits_only_json_report() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/measure_live_resources.py",
+            "--iterations",
+            "1",
+            "--width",
+            "16",
+            "--height",
+            "12",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout)
+    assert report["workload"]["width"] == 16
+    assert report["observation"]["successful_analyses"] == 1

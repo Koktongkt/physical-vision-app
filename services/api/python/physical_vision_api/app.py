@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from math import isfinite
+from time import monotonic
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -12,6 +18,7 @@ from physical_vision_barcode import (
     DEFAULT_BARCODE_FRAME_CONFIG,
     BarcodeFrameEvidence,
     BarcodeFrameFailure,
+    BarcodeFrameFailureCode,
     analyze_barcode_frame,
 )
 from physical_vision_image import (
@@ -21,6 +28,7 @@ from physical_vision_image import (
     FailureCode,
     decode_image,
 )
+from physical_vision_resources import observe_live_resources
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -48,8 +56,59 @@ _API_DECODE_CONFIG = DecodeConfig(
 @dataclass(frozen=True, slots=True)
 class ApiSettings:
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES
+    max_in_flight: int = 1
+    analysis_timeout_seconds: float = 2.0
+    resource_probe_timeout_seconds: float = 0.2
     allowed_hosts: tuple[str, ...] = DEFAULT_ALLOWED_HOSTS
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
+
+    def __post_init__(self) -> None:
+        if type(self.max_body_bytes) is not int or self.max_body_bytes <= 0:
+            raise ValueError("max_body_bytes must be a positive integer")
+        if type(self.max_in_flight) is not int or not 1 <= self.max_in_flight <= 4:
+            raise ValueError("max_in_flight must be an integer in [1, 4]")
+        if (
+            type(self.analysis_timeout_seconds) is not float
+            or not 0.0 < self.analysis_timeout_seconds <= 10.0
+        ):
+            raise ValueError("analysis_timeout_seconds must be a float in (0, 10]")
+        if (
+            type(self.resource_probe_timeout_seconds) is not float
+            or not 0.0 < self.resource_probe_timeout_seconds <= 0.5
+        ):
+            raise ValueError("resource_probe_timeout_seconds must be a float in (0, 0.5]")
+        if not self.allowed_hosts or not all(
+            _is_loopback_authority(host) for host in self.allowed_hosts
+        ):
+            raise ValueError(
+                "allowed_hosts must contain only explicit loopback host and port values"
+            )
+        if not self.cors_origins or not all(
+            _is_loopback_origin(origin) for origin in self.cors_origins
+        ):
+            raise ValueError("cors_origins must contain only exact HTTP loopback origins")
+
+
+class _AnalyzerCapacity:
+    def __init__(self, maximum: int) -> None:
+        self.maximum = maximum
+        self._in_flight = 0
+        self._lock = threading.Lock()
+
+    def try_acquire(self) -> bool:
+        with self._lock:
+            if self._in_flight >= self.maximum:
+                return False
+            self._in_flight += 1
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._in_flight -= 1
+
+    def snapshot(self) -> int:
+        with self._lock:
+            return self._in_flight
 
 
 class BodyTooLarge(Exception):
@@ -97,17 +156,6 @@ def _is_loopback_origin(origin: str) -> bool:
     )
 
 
-def _validate_local_settings(settings: ApiSettings) -> None:
-    if not settings.allowed_hosts or not all(
-        _is_loopback_authority(host) for host in settings.allowed_hosts
-    ):
-        raise ValueError("allowed_hosts must contain only explicit loopback host and port values")
-    if not settings.cors_origins or not all(
-        _is_loopback_origin(origin) for origin in settings.cors_origins
-    ):
-        raise ValueError("cors_origins must contain only exact HTTP loopback origins")
-
-
 class LocalRequestBoundaryMiddleware:
     def __init__(
         self,
@@ -139,7 +187,11 @@ class LocalRequestBoundaryMiddleware:
             await response(scope, receive, send)
             return
 
-        origins = [value.decode("latin-1") for key, value in headers if key.lower() == b"origin"]
+        origins = [
+            value.decode("latin-1")
+            for key, value in headers
+            if key.lower() == b"origin"
+        ]
         if len(origins) > 1 or (origins and origins[0] not in self.allowed_origins):
             response = JSONResponse(
                 status_code=403,
@@ -160,6 +212,67 @@ def _error_payload(message_key: str, *, code: str, category: str) -> dict[str, s
         "error": code,
         "category": category,
         "message_key": message_key,
+    }
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    return value if type(value) is int and value >= 0 else None
+
+
+def _consume_future_exception(future: asyncio.Future[Any]) -> None:
+    if not future.cancelled():
+        with suppress(Exception):
+            future.exception()
+
+
+def _resource_payload(
+    observation: Any,
+    *,
+    in_flight: int,
+    max_in_flight: int,
+) -> dict[str, Any]:
+    source = observation if type(observation) is dict else {}
+    elapsed = source.get("elapsed_ms")
+    if type(elapsed) not in {int, float} or not isfinite(elapsed) or elapsed < 0:
+        elapsed = 0.0
+
+    gpu_source = source.get("gpu")
+    gpu: dict[str, Any] = {"status": "unavailable"}
+    if type(gpu_source) is dict and gpu_source.get("status") == "observed":
+        device_count = _nonnegative_int(gpu_source.get("device_count"))
+        total_vram = _nonnegative_int(gpu_source.get("total_vram_bytes"))
+        used_vram = _nonnegative_int(gpu_source.get("used_vram_bytes"))
+        utilization = _nonnegative_int(gpu_source.get("maximum_utilization_percent"))
+        temperature = gpu_source.get("maximum_temperature_c")
+        if (
+            device_count is not None
+            and device_count >= 1
+            and total_vram is not None
+            and used_vram is not None
+            and used_vram <= total_vram
+            and utilization is not None
+            and utilization <= 100
+            and type(temperature) is int
+            and -100 <= temperature <= 300
+        ):
+            gpu = {
+                "status": "observed",
+                "device_count": device_count,
+                "total_vram_bytes": total_vram,
+                "used_vram_bytes": used_vram,
+                "maximum_utilization_percent": utilization,
+                "maximum_temperature_c": temperature,
+            }
+
+    return {
+        "schema_version": "live-resource-observation-v1",
+        "policy_version": "live-resource-policy-v1",
+        "elapsed_ms": elapsed,
+        "process_rss_bytes": _nonnegative_int(source.get("process_rss_bytes")),
+        "host_available_memory_bytes": _nonnegative_int(source.get("host_available_memory_bytes")),
+        "in_flight": in_flight,
+        "max_in_flight": max_in_flight,
+        "gpu": gpu,
     }
 
 
@@ -248,13 +361,32 @@ def create_app(
     *,
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
     analyzer: Callable[..., BarcodeFrameEvidence] | None = None,
+    resource_probe: Callable[..., dict[str, Any]] | None = None,
     settings: ApiSettings | None = None,
 ) -> FastAPI:
     cfg = settings if settings is not None else ApiSettings(max_body_bytes=max_body_bytes)
-    _validate_local_settings(cfg)
     run_analyze = analyzer or analyze_barcode_frame
+    run_resource_probe = resource_probe or observe_live_resources
+    capacity = _AnalyzerCapacity(cfg.max_in_flight)
+    executor = ThreadPoolExecutor(
+        max_workers=cfg.max_in_flight,
+        thread_name_prefix="barcode-analyzer",
+    )
 
-    app = FastAPI(title="physical-vision-api", version="0.1.0", docs_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        try:
+            yield
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    app = FastAPI(
+        title="physical-vision-api",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(cfg.cors_origins),
@@ -271,6 +403,23 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/v1/system/resources")
+    def resources() -> dict[str, Any]:
+        in_flight = capacity.snapshot()
+        try:
+            observation = run_resource_probe(
+                in_flight=in_flight,
+                max_in_flight=cfg.max_in_flight,
+                gpu_timeout_seconds=cfg.resource_probe_timeout_seconds,
+            )
+        except Exception:
+            observation = None
+        return _resource_payload(
+            observation,
+            in_flight=in_flight,
+            max_in_flight=cfg.max_in_flight,
+        )
 
     @app.post("/v1/barcode/analyze")
     async def barcode_analyze(request: Request) -> JSONResponse:
@@ -317,16 +466,87 @@ def create_app(
                 ),
             )
 
-        try:
-            evidence = run_analyze(image, DEFAULT_BARCODE_FRAME_CONFIG)
-        except BarcodeFrameFailure as exc:
-            status = 413 if "BUDGET" in exc.code.name else 400
+        if not capacity.try_acquire():
             return JSONResponse(
-                status_code=status,
+                status_code=503,
                 content=_error_payload(
-                    exc.message_key,
+                    "API_ANALYZER_BUSY",
+                    code="LOCAL_BUSY",
+                    category="local-resource",
+                ),
+            )
+
+        cancellation = threading.Event()
+        deadline = monotonic() + cfg.analysis_timeout_seconds
+        try:
+            future: Future[BarcodeFrameEvidence] = executor.submit(
+                run_analyze,
+                image,
+                DEFAULT_BARCODE_FRAME_CONFIG,
+                deadline=deadline,
+                cancelled=cancellation.is_set,
+            )
+        except Exception:
+            capacity.release()
+            return JSONResponse(
+                status_code=500,
+                content=_error_payload(
+                    "API_ANALYZER_FAILED",
+                    code="ANALYZER_FAILED",
+                    category="internal",
+                ),
+            )
+
+        future.add_done_callback(lambda _: capacity.release())
+        wrapped = asyncio.wrap_future(future)
+        wrapped.add_done_callback(_consume_future_exception)
+        try:
+            evidence = await asyncio.wait_for(
+                asyncio.shield(wrapped), timeout=cfg.analysis_timeout_seconds
+            )
+        except TimeoutError:
+            cancellation.set()
+            with suppress(Exception):
+                await asyncio.wait_for(asyncio.shield(wrapped), timeout=0.1)
+            return JSONResponse(
+                status_code=504,
+                content=_error_payload(
+                    "API_ANALYZER_TIMEOUT",
+                    code="LOCAL_TIMEOUT",
+                    category="timeout",
+                ),
+            )
+        except asyncio.CancelledError:
+            cancellation.set()
+            with suppress(Exception):
+                await asyncio.wait_for(asyncio.shield(wrapped), timeout=0.1)
+            raise
+        except BarcodeFrameFailure as exc:
+            if exc.code is BarcodeFrameFailureCode.ANALYZE_BUDGET_EXCEEDED:
+                return JSONResponse(
+                    status_code=504,
+                    content=_error_payload(
+                        "API_ANALYZER_TIMEOUT",
+                        code="LOCAL_TIMEOUT",
+                        category="timeout",
+                    ),
+                )
+            is_resource_budget = exc.code is BarcodeFrameFailureCode.IMAGE_BUDGET_EXCEEDED
+            return JSONResponse(
+                status_code=413 if is_resource_budget else 400,
+                content=_error_payload(
+                    f"API_{exc.code.value}",
                     code=exc.code.value,
-                    category=exc.category,
+                    category="local-resource" if is_resource_budget else "unsupported-input",
+                ),
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content=_error_payload(
+                    "API_ANALYZER_FAILED",
+                    code="ANALYZER_FAILED",
+                    category="internal",
                 ),
             )
 
