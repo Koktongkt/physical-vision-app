@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Physical Vision — barcode framing (Stage 7)</title>
+    <title>Physical Vision — barcode framing (Stage 8)</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
       <header class="header">
         <h1>1D barcode framing</h1>
         <p class="sub">
-          Live preview · ready/green + one-action guidance · no decode · Stage 7
+          Live preview · ready/green + one-action guidance · no decode · Stage 8
         </p>
       </header>
 
@@ -28,18 +28,9 @@
       </section>
 
       <section class="controls" aria-label="Controls">
-        <label class="field">
-          API base
-          <input
-            id="apiBase"
-            type="text"
-            value="http://127.0.0.1:8000"
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </label>
         <div class="buttons">
           <button type="button" id="btnStart">Start camera</button>
+          <button type="button" id="btnStop" disabled>Stop camera</button>
           <button type="button" id="btnAnalyze" disabled>Analyze</button>
           <button type="button" id="btnShutter" disabled>Shutter</button>
           <button type="button" id="btnRetake" disabled>Retake</button>

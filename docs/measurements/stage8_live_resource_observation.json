@@ -1,0 +1,39 @@
+{
+  "observation": {
+    "failed_analyses": 0,
+    "gpu_after": {
+      "device_count": 1,
+      "maximum_temperature_c": 46,
+      "maximum_utilization_percent": 7,
+      "status": "observed",
+      "total_vram_bytes": 12820938752,
+      "used_vram_bytes": 6177161216
+    },
+    "gpu_before": {
+      "device_count": 1,
+      "maximum_temperature_c": 46,
+      "maximum_utilization_percent": 7,
+      "status": "observed",
+      "total_vram_bytes": 12820938752,
+      "used_vram_bytes": 6177161216
+    },
+    "maximum_analyze_elapsed_ms": 31.0,
+    "minimum_host_available_memory_bytes": 13418319872,
+    "process_cpu_ms": 187.5,
+    "process_rss_after_bytes": 46706688,
+    "process_rss_before_bytes": 38580224,
+    "successful_analyses": 5,
+    "wall_ms": 91.711
+  },
+  "policy_version": "live-resource-policy-v1",
+  "schema_version": "live-resource-measurement-v1",
+  "scope": "provisional-engineering-measurement-not-product-slo",
+  "workload": {
+    "fixture_kind": "synthetic-solid-color",
+    "height": 384,
+    "iterations": 5,
+    "max_in_flight": 1,
+    "timeout_seconds": 2.0,
+    "width": 512
+  }
+}

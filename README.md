@@ -30,9 +30,9 @@ A privacy-conscious, local-first browser application that helps a user **frame o
 
 **Stage 6 (merged — B21+B22):** `physical_vision_barcode` analyze API (`none|one|multiple` + box, decode off), localhost FastAPI `POST /v1/barcode/analyze`, and `apps/web` live preview + shutter/retake + overlay. Composes Stage 5 classical localization.
 
-**Stage 7 (this branch — B23+B24):** readiness gates + green ready UI + exactly one camera-referent guidance action from the dominant failing gate. Recipe `barcode-frame-ready-v1`. Decode still off. Thresholds are VT seeds — not a claim of calibrated production ready rates.
+**Stage 7 (merged — B23+B24):** readiness gates + green ready UI + exactly one camera-referent guidance action from the dominant failing gate. Recipe `barcode-frame-ready-v1`. Decode still off. Thresholds are VT seeds — not a claim of calibrated production ready rates.
 
-**Next critical path after Stage 7 merge:** B25 privacy/resource hardening, B26 live pilot evidence.
+**Stage 8 (B25 implementation branch):** ephemeral browser resources, explicit camera stop/lifecycle cleanup, bounded browser requests, and a canonical loopback-only web launcher. This is a personal-test baseline, not production security certification. B26 live pilot evidence remains separate.
 
 ## MVP implementation path (RI)
 
@@ -50,15 +50,15 @@ Optional barcode **decode** stays offline-only as a scanner-readable diagnostic,
 
 Still not approved: production, remote/multi-user, Ultralytics distribution, or accuracy claims without locked evidence.
 
-## Local Stage 7 smoke (camera optional)
+## Local Stage 8 smoke (camera optional)
 
 ```bash
 # API (loopback)
 uvx --from uv==0.11.31 uv run python scripts/run_local_barcode_api.py
 
 # Web static client (separate terminal)
-python -m http.server 5173 --directory apps/web
-# open http://127.0.0.1:5173 — Start camera → Analyze / Shutter / Retake
+uvx --from uv==0.11.31 uv run python scripts/run_local_barcode_web.py
+# opens only http://127.0.0.1:5173/ — Start camera → Analyze / Shutter / Retake / Stop
 # ready = green “you may take the picture”; guidance = one camera cue
 ```
 

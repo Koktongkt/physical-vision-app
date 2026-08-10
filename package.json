@@ -9,7 +9,8 @@
   "scripts": {
     "contracts:generate": "node packages/contracts/scripts/generate-types.mjs",
     "contracts:check": "node packages/contracts/scripts/generate-types.mjs --check",
-    "test:ts": "node --test packages/contracts/tests/*.test.mjs",
+    "test:ts": "node --test packages/contracts/tests/*.test.mjs apps/web/tests/*.test.mjs",
+    "test:web": "node --test apps/web/tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check ."
   },
