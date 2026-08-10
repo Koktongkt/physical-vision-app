@@ -21,7 +21,7 @@ def test_health_returns_ok() -> None:
     from physical_vision_api import create_app
     from starlette.testclient import TestClient
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
@@ -62,7 +62,7 @@ def test_analyze_multipart_png_returns_count_without_decode_fields() -> None:
     )
 
     with patch("physical_vision_api.app.analyze_barcode_frame", return_value=fake):
-        client = TestClient(create_app())
+        client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
         response = client.post(
             "/v1/barcode/analyze",
             files={"image": ("frame.png", _png_bytes(), "image/png")},
@@ -106,7 +106,7 @@ def test_analyze_multiple_returns_null_box() -> None:
         quality=None,
     )
     with patch("physical_vision_api.app.analyze_barcode_frame", return_value=fake):
-        client = TestClient(create_app())
+        client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
         response = client.post(
             "/v1/barcode/analyze",
             files={"image": ("frame.png", _png_bytes(), "image/png")},
@@ -125,7 +125,7 @@ def test_analyze_rejects_oversize_body() -> None:
     from physical_vision_api import create_app
     from starlette.testclient import TestClient
 
-    client = TestClient(create_app(max_body_bytes=1024))
+    client = TestClient(create_app(max_body_bytes=1024), base_url="http://127.0.0.1:8000")
     huge = b"\x89PNG\r\n\x1a\n" + (b"x" * 5000)
     response = client.post(
         "/v1/barcode/analyze",
@@ -162,7 +162,7 @@ def test_analyze_raw_body_jpeg_accepted() -> None:
         quality=None,
     )
     with patch("physical_vision_api.app.analyze_barcode_frame", return_value=fake):
-        client = TestClient(create_app())
+        client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
         response = client.post(
             "/v1/barcode/analyze",
             content=jpeg,
@@ -206,7 +206,7 @@ def test_analyze_guidance_returns_single_action_and_failing_gates() -> None:
         ),
     )
     with patch("physical_vision_api.app.analyze_barcode_frame", return_value=fake):
-        client = TestClient(create_app())
+        client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
         response = client.post(
             "/v1/barcode/analyze",
             files={"image": ("frame.png", _png_bytes(), "image/png")},
@@ -224,7 +224,7 @@ def test_analyze_invalid_bytes_returns_content_free_error() -> None:
     from physical_vision_api import create_app
     from starlette.testclient import TestClient
 
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1:8000")
     response = client.post(
         "/v1/barcode/analyze",
         files={"image": ("bad.png", b"not-an-image", "image/png")},

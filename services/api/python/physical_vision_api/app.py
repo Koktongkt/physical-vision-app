@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,9 +22,16 @@ from physical_vision_image import (
     decode_image,
 )
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # Default ~4 MiB encoded frame budget for live samples (tighter than full B06 upload).
 DEFAULT_MAX_BODY_BYTES = 4_000_000
+DEFAULT_ALLOWED_HOSTS = ("127.0.0.1:8000", "localhost:8000", "[::1]:8000")
+DEFAULT_CORS_ORIGINS = tuple(
+    f"http://{host}:{port}"
+    for port in (5173, 4173, 8080)
+    for host in ("127.0.0.1", "localhost", "[::1]")
+)
 _API_DECODE_CONFIG = DecodeConfig(
     version=DEFAULT_DECODE_CONFIG.version,
     max_encoded_bytes=DEFAULT_MAX_BODY_BYTES,
@@ -40,19 +48,111 @@ _API_DECODE_CONFIG = DecodeConfig(
 @dataclass(frozen=True, slots=True)
 class ApiSettings:
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES
-    cors_origins: tuple[str, ...] = (
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-        "http://127.0.0.1:4173",
-        "http://localhost:4173",
-        "http://127.0.0.1:8080",
-        "http://localhost:8080",
-        "null",  # file:// origin for static open
-    )
+    allowed_hosts: tuple[str, ...] = DEFAULT_ALLOWED_HOSTS
+    cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
 
 
 class BodyTooLarge(Exception):
     pass
+
+
+def _is_loopback_authority(authority: str) -> bool:
+    if not authority or any(character.isspace() for character in authority):
+        return False
+    if authority.startswith("["):
+        closing_bracket = authority.find("]")
+        if closing_bracket < 0:
+            return False
+        host = authority[1:closing_bracket]
+        separator = authority[closing_bracket + 1 : closing_bracket + 2]
+        port_text = authority[closing_bracket + 2 :]
+    else:
+        host, separator, port_text = authority.rpartition(":")
+        if ":" in host:
+            return False
+    if separator != ":" or host not in {"127.0.0.1", "localhost", "::1"}:
+        return False
+    if not port_text.isascii() or not port_text.isdecimal():
+        return False
+    return 1 <= int(port_text) <= 65535
+
+
+def _is_loopback_origin(origin: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "http"
+        and parsed.netloc != ""
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and parsed.username is None
+        and parsed.password is None
+        and port is not None
+        and parsed.path == ""
+        and parsed.query == ""
+        and parsed.fragment == ""
+        and origin == f"http://{parsed.netloc}"
+    )
+
+
+def _validate_local_settings(settings: ApiSettings) -> None:
+    if not settings.allowed_hosts or not all(
+        _is_loopback_authority(host) for host in settings.allowed_hosts
+    ):
+        raise ValueError("allowed_hosts must contain only explicit loopback host and port values")
+    if not settings.cors_origins or not all(
+        _is_loopback_origin(origin) for origin in settings.cors_origins
+    ):
+        raise ValueError("cors_origins must contain only exact HTTP loopback origins")
+
+
+class LocalRequestBoundaryMiddleware:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        allowed_hosts: tuple[str, ...],
+        allowed_origins: tuple[str, ...],
+    ) -> None:
+        self.app = app
+        self.allowed_hosts = frozenset(allowed_hosts)
+        self.allowed_origins = frozenset(allowed_origins)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = scope.get("headers", [])
+        hosts = [value.decode("latin-1") for key, value in headers if key.lower() == b"host"]
+        if len(hosts) != 1 or hosts[0] not in self.allowed_hosts:
+            response = JSONResponse(
+                status_code=403,
+                content=_error_payload(
+                    "API_HOST_NOT_ALLOWED",
+                    code="HOST_NOT_ALLOWED",
+                    category="local-security",
+                ),
+            )
+            await response(scope, receive, send)
+            return
+
+        origins = [value.decode("latin-1") for key, value in headers if key.lower() == b"origin"]
+        if len(origins) > 1 or (origins and origins[0] not in self.allowed_origins):
+            response = JSONResponse(
+                status_code=403,
+                content=_error_payload(
+                    "API_ORIGIN_NOT_ALLOWED",
+                    code="ORIGIN_NOT_ALLOWED",
+                    category="local-security",
+                ),
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
 
 
 def _error_payload(message_key: str, *, code: str, category: str) -> dict[str, str]:
@@ -151,6 +251,7 @@ def create_app(
     settings: ApiSettings | None = None,
 ) -> FastAPI:
     cfg = settings if settings is not None else ApiSettings(max_body_bytes=max_body_bytes)
+    _validate_local_settings(cfg)
     run_analyze = analyzer or analyze_barcode_frame
 
     app = FastAPI(title="physical-vision-api", version="0.1.0", docs_url=None, redoc_url=None)
@@ -160,6 +261,11 @@ def create_app(
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
+    )
+    app.add_middleware(
+        LocalRequestBoundaryMiddleware,
+        allowed_hosts=cfg.allowed_hosts,
+        allowed_origins=cfg.cors_origins,
     )
 
     @app.get("/health")
