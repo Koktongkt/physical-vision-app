@@ -287,3 +287,37 @@ Observed: 66 passed.
 - Scope-token review — the sole added B26 mention is the README's explicit exclusion; no LAN listener, persistence implementation, decode path, PaddleOCR, or B26 implementation was added.
 
 Live launcher smoke used the real servers. API startup reported `Uvicorn running on http://127.0.0.1:8000`; the web server reported `('127.0.0.1', 5173)`. Observed statuses were API health 200, API resources 200, hostile API Host 403, web root 200, and hostile web Host 403. Both servers were then stopped.
+
+## Exact-SHA review remediation — multipart shadow-copy blocker
+
+Fresh independent review of `7b3e938ede8d53e12498c611fecba389fd716d81` found that Starlette's default multipart parser could spool an admitted frame larger than 1 MiB to the system temporary directory before the application read and closed it. That SHA was blocked and was not published.
+
+RED command:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_b25_privacy_canaries.py::test_multipart_frame_never_rolls_to_disk_and_closes_parser_scratch -q
+```
+
+Observed RED: 1 failed. A 1,100,032-byte sentinel upload caused the parser's `SpooledTemporaryFile` to report `_rolled=true`.
+
+GREEN commands:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_b25_privacy_canaries.py::test_multipart_frame_never_rolls_to_disk_and_closes_parser_scratch -q
+uvx --from uv==0.11.31 uv run pytest tests/python/test_barcode_api.py tests/python/test_b25_privacy_canaries.py -q
+```
+
+Observed GREEN: 1 passed, then 16 passed. Request bytes are now accumulated from the ASGI stream under the global body bound before multipart parsing. The already-bounded multipart body uses a per-request in-memory spool threshold equal to that bound, parser scratch is closed in `finally`, malformed parser errors map to a fixed content-free failure, and raw requests no longer use unbounded `request.body()` accumulation.
+
+Post-remediation full gates:
+
+- `uvx --from uv==0.11.31 uv run pytest -q` — 387 passed, 1 skipped.
+- `uvx --from uv==0.11.31 uv run ruff check .` — all checks passed.
+- `uvx --from uv==0.11.31 uv run ruff format --check .` — 30 files already formatted.
+- `npm run contracts:check` — generated contract types in sync.
+- `npm run test:ts` — 149 passed, 0 failed.
+- `npm run typecheck` — passed.
+- `npm run format:check` — passed.
+- `npm audit --audit-level=high` — 0 vulnerabilities.
+- `uvx --from uv==0.11.31 uv run python scripts/check_sensitive_files.py` — passed for 243 tracked files.
+- `git diff --check` — passed.

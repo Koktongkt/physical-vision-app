@@ -30,6 +30,7 @@ from physical_vision_image import (
 )
 from physical_vision_resources import observe_live_resources
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.formparsers import MultiPartParser
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 # Default ~4 MiB encoded frame budget for live samples (tighter than full B06 upload).
@@ -307,10 +308,15 @@ def _evidence_json(evidence: BarcodeFrameEvidence) -> dict[str, Any]:
     }
 
 
-def _read_limited(data: bytes, max_body_bytes: int) -> bytes:
-    if len(data) > max_body_bytes:
-        raise BodyTooLarge
-    return data
+async def _read_request_body_limited(request: Request, max_body_bytes: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_body_bytes:
+            raise BodyTooLarge
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 async def _extract_image_bytes(request: Request, max_body_bytes: int) -> bytes:
@@ -323,34 +329,58 @@ async def _extract_image_bytes(request: Request, max_body_bytes: int) -> bytes:
         except ValueError:
             pass
 
+    body = await _read_request_body_limited(request, max_body_bytes)
+
     if "multipart/form-data" in content_type:
-        form = await request.form()
-        upload = form.get("image")
-        if upload is None:
-            for value in form.values():
-                if isinstance(value, StarletteUploadFile):
-                    upload = value
-                    break
-        if not isinstance(upload, StarletteUploadFile):
+
+        async def body_stream():
+            yield body
+
+        parser = MultiPartParser(
+            headers=request.headers,
+            stream=body_stream(),
+            max_files=1,
+            max_fields=1,
+            max_part_size=max_body_bytes,
+        )
+        # The entire multipart body has already passed the stricter global bound.
+        # Keep parser scratch in memory so preview frames never become temp-file copies.
+        parser.spool_max_size = max_body_bytes
+        form = None
+        try:
+            form = await parser.parse()
+            upload = form.get("image")
+            if upload is None:
+                for value in form.values():
+                    if isinstance(value, StarletteUploadFile):
+                        upload = value
+                        break
+            if not isinstance(upload, StarletteUploadFile):
+                raise DecodeFailure(
+                    FailureCode.INVALID_OR_CORRUPT_IMAGE,
+                    "unsupported-input",
+                    "API_IMAGE_FIELD_MISSING",
+                )
+            encoded = await upload.read(max_body_bytes + 1)
+            if len(encoded) > max_body_bytes:
+                raise BodyTooLarge
+            return encoded
+        except (BodyTooLarge, DecodeFailure):
+            raise
+        except Exception:
             raise DecodeFailure(
                 FailureCode.INVALID_OR_CORRUPT_IMAGE,
                 "unsupported-input",
-                "API_IMAGE_FIELD_MISSING",
-            )
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = await upload.read(64 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_body_bytes:
-                raise BodyTooLarge
-            chunks.append(chunk)
-        return b"".join(chunks)
+                "API_MULTIPART_INVALID",
+            ) from None
+        finally:
+            if form is not None:
+                await form.close()
+            else:
+                for scratch in parser._files_to_close_on_error:
+                    scratch.close()
 
-    body = await request.body()
-    return _read_limited(body, max_body_bytes)
+    return body
 
 
 def create_app(

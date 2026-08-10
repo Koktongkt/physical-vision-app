@@ -103,3 +103,32 @@ def test_b25_sentinels_never_reach_responses_metrics_logs_repr_or_disk(
         assert sentinel not in surfaces
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_multipart_frame_never_rolls_to_disk_and_closes_parser_scratch(
+    monkeypatch,
+) -> None:
+    import starlette.formparsers as formparsers
+    from physical_vision_api import create_app
+
+    created = []
+    real_spooled_temporary_file = formparsers.SpooledTemporaryFile
+
+    def tracked_spooled_temporary_file(*args, **kwargs):
+        scratch = real_spooled_temporary_file(*args, **kwargs)
+        created.append(scratch)
+        return scratch
+
+    monkeypatch.setattr(formparsers, "SpooledTemporaryFile", tracked_spooled_temporary_file)
+    sentinel = b"B25-MULTIPART-SHADOW-COPY-CANARY" + (b"x" * 1_100_000)
+    with TestClient(create_app(), base_url="http://127.0.0.1:8000") as client:
+        response = client.post(
+            "/v1/barcode/analyze",
+            files={"image": ("frame.png", sentinel, "image/png")},
+        )
+
+    assert response.status_code == 400
+    assert created
+    assert all(not scratch._rolled for scratch in created)
+    assert all(scratch.closed for scratch in created)
+    assert "B25-MULTIPART-SHADOW-COPY-CANARY" not in response.text
