@@ -1,11 +1,15 @@
+import { createCameraResources } from "./lifecycle.mjs";
+
 /**
- * Stage 7 live barcode framing client (B21–B24).
+ * Stage 8 live barcode framing client (B21–B25).
  * Ready/green gates + one-action camera guidance. No decode/serial display.
  * Preview frames stay in memory.
  */
 
 const MAX_SAMPLE_HZ = 5;
 const MIN_SAMPLE_MS = Math.ceil(1000 / MAX_SAMPLE_HZ);
+const ANALYZE_TIMEOUT_MS = 2500;
+const API_BASE = "http://127.0.0.1:8000";
 
 /** Camera-referent English copy for guidance_action enum values. */
 const GUIDANCE_COPY = {
@@ -26,24 +30,28 @@ const els = {
   overlay: document.getElementById("overlay"),
   status: document.getElementById("status"),
   error: document.getElementById("error"),
-  apiBase: document.getElementById("apiBase"),
   btnStart: document.getElementById("btnStart"),
+  btnStop: document.getElementById("btnStop"),
   btnAnalyze: document.getElementById("btnAnalyze"),
   btnShutter: document.getElementById("btnShutter"),
   btnRetake: document.getElementById("btnRetake"),
   autoSample: document.getElementById("autoSample"),
 };
 
-/** @type {MediaStream | null} */
-let stream = null;
 /** @type {"live" | "frozen"} */
 let mode = "live";
 /** @type {object | null} */
 let lastResult = null;
-let analyzing = false;
+let starting = false;
+let cameraStartEpoch = 0;
 let lastSampleAt = 0;
-/** @type {number | null} */
-let sampleTimer = null;
+
+const resources = createCameraResources({
+  video: els.preview,
+  canvases: [els.freeze, els.overlay],
+  clearIntervalFn: (timer) => window.clearInterval(timer),
+  onTrackEnded: () => stopCamera("Camera ended"),
+});
 
 function setError(message) {
   if (!message) {
@@ -60,16 +68,13 @@ function setStatus(text, kind = "searching") {
   els.status.dataset.kind = kind;
 }
 
-function apiBase() {
-  return (els.apiBase.value || "http://127.0.0.1:8000").replace(/\/$/, "");
-}
-
 function syncButtons() {
-  const live = mode === "live" && !!stream;
-  els.btnAnalyze.disabled = !live || analyzing;
+  const live = mode === "live" && !!resources.stream;
+  els.btnAnalyze.disabled = !live || !!resources.requestController;
   els.btnShutter.disabled = !live;
   els.btnRetake.disabled = mode !== "frozen";
-  els.btnStart.disabled = !!stream && mode === "live";
+  els.btnStart.disabled = starting || !!resources.stream;
+  els.btnStop.disabled = !resources.stream;
   els.autoSample.disabled = !live;
 }
 
@@ -222,33 +227,47 @@ async function captureFrameBlob() {
   const ctx = scratch.getContext("2d");
   if (!ctx) return null;
   ctx.drawImage(video, 0, 0, scratch.width, scratch.height);
-  return new Promise((resolve) => {
+  const blob = await new Promise((resolve) => {
     scratch.toBlob((blob) => resolve(blob), "image/jpeg", 0.85);
   });
+  ctx.clearRect(0, 0, scratch.width, scratch.height);
+  scratch.width = 1;
+  scratch.height = 1;
+  return blob;
 }
 
 async function analyzeOnce() {
-  if (analyzing || mode !== "live" || !stream) return;
+  if (resources.requestController || mode !== "live" || !resources.stream)
+    return;
   const now = performance.now();
   if (now - lastSampleAt < MIN_SAMPLE_MS) return;
   lastSampleAt = now;
-  analyzing = true;
   syncButtons();
   setError("");
   setStatus("Searching…", "searching");
+  const analysisEpoch = cameraStartEpoch;
+  const controller = resources.beginRequest();
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ANALYZE_TIMEOUT_MS);
   try {
     const blob = await captureFrameBlob();
+    if (controller.signal.aborted || analysisEpoch !== cameraStartEpoch) return;
     if (!blob) {
       setStatus("No frame yet", "error");
       return;
     }
     const form = new FormData();
     form.append("image", blob, "frame.jpg");
-    const response = await fetch(`${apiBase()}/v1/barcode/analyze`, {
+    const response = await fetch(`${API_BASE}/v1/barcode/analyze`, {
       method: "POST",
       body: form,
+      signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
+    if (controller.signal.aborted || analysisEpoch !== cameraStartEpoch) return;
     if (!response.ok) {
       const key = data.message_key || data.error || `HTTP ${response.status}`;
       setStatus("Analyze failed", "error");
@@ -264,29 +283,44 @@ async function analyzeOnce() {
       return;
     }
     applyResult(data);
-  } catch (err) {
+  } catch {
+    if (
+      (controller.signal.aborted && !timedOut) ||
+      analysisEpoch !== cameraStartEpoch
+    )
+      return;
+    if (timedOut) {
+      setStatus("Analyze timed out", "error");
+      setError("Analysis exceeded the local time budget.");
+      clearOverlay();
+      return;
+    }
     setStatus("API unreachable", "error");
-    setError(
-      err instanceof Error
-        ? `Could not reach API (${err.message}). Is uvicorn running on ${apiBase()}?`
-        : "Could not reach API.",
-    );
+    setError("Could not reach the loopback API.");
     clearOverlay();
   } finally {
-    analyzing = false;
+    window.clearTimeout(timeout);
+    resources.finishRequest(controller);
     syncButtons();
   }
 }
 
 async function startCamera() {
+  if (starting || resources.stream) return;
+  const startEpoch = ++cameraStartEpoch;
+  starting = true;
   setError("");
+  syncButtons();
   if (!navigator.mediaDevices?.getUserMedia) {
+    starting = false;
     setStatus("Camera unavailable", "error");
     setError("This browser does not expose getUserMedia.");
+    syncButtons();
     return;
   }
+  let acquiredStream = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    acquiredStream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         facingMode: { ideal: "environment" },
@@ -294,9 +328,26 @@ async function startCamera() {
         height: { ideal: 720 },
       },
     });
+    if (startEpoch !== cameraStartEpoch) {
+      resources.releaseStream(acquiredStream);
+      return;
+    }
+    resources.attachStream(acquiredStream);
+    mode = "live";
+    els.freeze.classList.add("hidden");
+    els.preview.classList.remove("hidden");
+    await els.preview.play();
+    if (startEpoch !== cameraStartEpoch) {
+      resources.releaseStream(acquiredStream);
+      return;
+    }
   } catch (err) {
-    stream = null;
-    setStatus("Camera permission denied", "error");
+    if (startEpoch !== cameraStartEpoch) {
+      if (acquiredStream) resources.releaseStream(acquiredStream);
+      return;
+    }
+    resources.stop();
+    setStatus("Camera unavailable", "error");
     const name =
       err && typeof err === "object" && "name" in err ? err.name : "";
     setError(
@@ -306,14 +357,11 @@ async function startCamera() {
           ? "No camera device found."
           : "Could not open camera.",
     );
-    syncButtons();
     return;
+  } finally {
+    if (startEpoch === cameraStartEpoch) starting = false;
+    syncButtons();
   }
-  els.preview.srcObject = stream;
-  mode = "live";
-  els.freeze.classList.add("hidden");
-  els.preview.classList.remove("hidden");
-  await els.preview.play().catch(() => {});
   resizeCanvases();
   setStatus("Live — searching…", "searching");
   syncButtons();
@@ -321,21 +369,20 @@ async function startCamera() {
 }
 
 function stopAutoSample() {
-  if (sampleTimer != null) {
-    window.clearInterval(sampleTimer);
-    sampleTimer = null;
-  }
+  resources.clearSampleTimer();
 }
 
 function startAutoSample() {
   stopAutoSample();
-  sampleTimer = window.setInterval(() => {
-    void analyzeOnce();
-  }, MIN_SAMPLE_MS);
+  resources.setSampleTimer(
+    window.setInterval(() => {
+      void analyzeOnce();
+    }, MIN_SAMPLE_MS),
+  );
 }
 
 function shutter() {
-  if (!stream || mode !== "live") return;
+  if (!resources.stream || mode !== "live") return;
   resizeCanvases();
   const geom = drawVideoContained(els.preview, els.freeze);
   if (geom) {
@@ -371,29 +418,47 @@ function shutter() {
   syncButtons();
 }
 
-function retake() {
+async function retake() {
+  stopCamera();
+  await startCamera();
+}
+
+function stopCamera(status = "Camera idle") {
+  cameraStartEpoch += 1;
+  starting = false;
+  resources.stop();
   mode = "live";
   els.freeze.classList.add("hidden");
   els.preview.classList.remove("hidden");
   lastResult = null;
-  clearOverlay();
-  setStatus("Live — searching…", "searching");
+  setStatus(status, "searching");
   setError("");
   syncButtons();
-  if (els.autoSample.checked) startAutoSample();
 }
 
 els.btnStart.addEventListener("click", () => {
   void startCamera();
 });
+els.btnStop.addEventListener("click", () => stopCamera());
 els.btnAnalyze.addEventListener("click", () => {
   void analyzeOnce();
 });
 els.btnShutter.addEventListener("click", () => shutter());
-els.btnRetake.addEventListener("click", () => retake());
+els.btnRetake.addEventListener("click", () => {
+  void retake();
+});
 els.autoSample.addEventListener("change", () => {
-  if (els.autoSample.checked && mode === "live" && stream) startAutoSample();
+  if (els.autoSample.checked && mode === "live" && resources.stream)
+    startAutoSample();
   else stopAutoSample();
+});
+
+window.addEventListener("pagehide", () => stopCamera());
+window.addEventListener("beforeunload", () => stopCamera());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    stopCamera("Camera stopped while page was hidden");
+  }
 });
 
 window.addEventListener("resize", () => {

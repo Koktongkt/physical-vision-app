@@ -106,3 +106,107 @@ Observed: exit 0; content-free `live-resource-measurement-v1` JSON with 5 succes
 - `npm audit --audit-level=high` — 0 vulnerabilities.
 - `uvx --from uv==0.11.31 uv run python scripts/check_sensitive_files.py` — passed for 237 tracked files before staging.
 - `git diff --check` — passed.
+
+## Browser lifecycle and loopback launcher slice
+
+Scope: browser stop/cleanup lifecycle and loopback web launcher, based on `e7e797192aea9ab98db818e3152b598ac94a25c0`. This evidence makes no B26, production-security, performance, decode, OCR, persistence, or LAN-access claim.
+
+### Browser resource owner
+
+RED:
+
+```text
+node --test apps/web/tests/lifecycle.test.mjs
+ERR_MODULE_NOT_FOUND: apps/web/lifecycle.mjs
+0 passed, 1 failed
+```
+
+GREEN after adding the DOM-light resource owner:
+
+```text
+node --test apps/web/tests/lifecycle.test.mjs
+1 passed, 0 failed
+```
+
+### Application lifecycle wiring
+
+RED:
+
+```text
+node --test apps/web/tests/lifecycle.test.mjs
+4 passed, 1 failed
+AssertionError: app.js did not contain createCameraResources
+```
+
+GREEN after wiring Stop, Retake, pagehide, beforeunload, visibility-hidden, and track-ended cleanup:
+
+```text
+node --check apps/web/app.js && node --test apps/web/tests/lifecycle.test.mjs
+5 passed, 0 failed
+```
+
+### Bounded loopback-only browser analysis
+
+RED:
+
+```text
+node --test --test-name-pattern="analysis is bounded" apps/web/tests/lifecycle.test.mjs
+0 passed, 1 failed
+AssertionError: fixed 127.0.0.1 API base was absent
+```
+
+GREEN after removing the editable API target, adding AbortController timeout/cancellation, and clearing scratch pixels:
+
+```text
+node --check apps/web/app.js && node --test apps/web/tests/lifecycle.test.mjs
+6 passed, 0 failed
+```
+
+### Reviewer-found async exit races
+
+Independent pre-commit review found that an already-resolved response could repopulate cleared UI after Stop, and a stale camera-start rejection could stop a newer stream. Regression tests were added before the fix.
+
+RED:
+
+```text
+node --test apps/web/tests/lifecycle.test.mjs
+5 passed, 2 failed
+TypeError: resources.releaseStream is not a function
+AssertionError: analysis epoch guard was absent
+```
+
+GREEN after identity-aware stream release and camera/request epoch checks:
+
+```text
+node --check apps/web/app.js && node --test apps/web/tests/lifecycle.test.mjs
+7 passed, 0 failed
+```
+
+### Loopback web launcher
+
+RED:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_local_web_launcher.py -q
+ModuleNotFoundError: scripts.run_local_barcode_web
+0 passed, 1 failed
+```
+
+GREEN after adding the standard-library launcher:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_local_web_launcher.py -q
+5 passed
+```
+
+Covered launcher behavior at this slice: exact `127.0.0.1` bind, exact approved URL, live static-server smoke/security headers, normal server stop, browser startup failure, and serving cancellation cleanup.
+
+### Implemented provisional browser budgets
+
+- Sample rate: at most 5 Hz (existing B21 VT retained).
+- Sample max side: 1280 px (existing B21 VT retained).
+- One client request at a time; overlap is rejected by state/resource owner.
+- Browser analyze timeout: 2500 ms; abort propagates through `fetch`.
+- Hidden pages stop the camera and require explicit Start to resume.
+
+These are provisional personal-test engineering limits, not validated performance or production limits.

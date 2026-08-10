@@ -1,6 +1,6 @@
-# apps/web — Stage 7 live barcode framing client
+# apps/web — Stage 8 live barcode framing client
 
-Minimal localhost browser UI for **B21–B24**:
+Minimal localhost browser UI for **B21–B25**:
 
 - camera permission + live `<video>` preview
 - Analyze button and optional auto-sample capped at **5 Hz**
@@ -10,7 +10,8 @@ Minimal localhost browser UI for **B21–B24**:
   - **abstain** → none/multiple/unknown copy (no directional action)
 - overlay: green box when ready; accent when guidance; none when abstain
 - **Shutter** freezes the current frame on a canvas (keeps last result; human-only, no auto-capture)
-- **Retake** returns to live preview
+- **Retake** releases the prior track/buffers and starts a fresh live preview
+- **Stop camera** releases tracks, timers, in-flight analysis, and canvases
 - **never** displays decode payloads or serial strings
 
 ## Prerequisites
@@ -50,19 +51,18 @@ Health check: `GET http://127.0.0.1:8000/health` → `{"status":"ok"}`.
 
 ## Run this web client
 
-Static files only — no build step.
+Static files only — no build step. Use the canonical launcher so the web server cannot bind to LAN interfaces:
 
 ```bash
-# from repo root
-npx --yes serve apps/web -l 5173
-# or
-python -m http.server 5173 --directory apps/web
+# from repo root; binds exactly 127.0.0.1:5173 and opens the approved URL
+uvx --from uv==0.11.31 uv run python scripts/run_local_barcode_web.py
 ```
 
-Open `http://127.0.0.1:5173`. Confirm the API base field matches the uvicorn origin. Click **Start camera**, allow permission, then **Analyze** (or enable auto-sample).
+The launcher opens `http://127.0.0.1:5173/`; the client calls only `http://127.0.0.1:8000`. Click **Start camera**, allow permission, then **Analyze** (or enable auto-sample).
 
 ## Notes
 
 - CI cannot open a camera; Python unit/API tests cover detect + readiness without hardware.
 - Decode remains off. Thresholds are VT seeds, not calibrated production ready rates.
-- Preview frames are not written to disk by this client.
+- Preview frames are not written to disk by this client. Scratch pixels are cleared after blob creation.
+- Stop, Retake, hidden-page, page exit, and camera track-ended paths release browser resources. Returning from a hidden page requires **Start camera** again.

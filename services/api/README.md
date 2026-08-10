@@ -43,6 +43,12 @@ From repository root:
 uvx --from uv==0.11.31 uv run python scripts/run_local_barcode_api.py
 ```
 
+Run the browser client in a separate terminal with the loopback-only launcher:
+
+```bash
+uvx --from uv==0.11.31 uv run python scripts/run_local_barcode_web.py
+```
+
 ## Tests
 
 ```bash
