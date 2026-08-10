@@ -58,3 +58,9 @@ The content-free observed run from 2026-08-10 is tracked at `docs/measurements/s
 - GPU observation available; aggregate utilization 7% and temperature 46 °C before/after
 
 This single synthetic local run is non-generalizable. It does not validate the VTs, represent camera workload diversity, or support a production performance claim.
+
+## Browser and static-launcher privacy boundary
+
+The browser owns both the active `AbortController` and its 2.5-second analyze timeout. Every camera lifecycle exit clears the timer, aborts the request, stops tracks, detaches the stream, and clears display canvases. This remains true while asynchronous frame encoding is pending. Non-2xx API bodies are not rendered; HTTP status maps only to fixed local error copy.
+
+The canonical static launcher accepts exactly the bound loopback authority (`127.0.0.1:<port>` or `localhost:<port>`). Missing, duplicate, malformed, wrong-port, suffix-confusion, comma-joined, and hostile Host values receive a fixed content-free 403 before static path handling. Request paths and rejected Host values are not logged.

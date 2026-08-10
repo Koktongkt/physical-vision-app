@@ -1,4 +1,4 @@
-import { createCameraResources } from "./lifecycle.mjs";
+import { createCameraResources, safeAnalyzeError } from "./lifecycle.mjs";
 
 /**
  * Stage 8 live barcode framing client (B21–B25).
@@ -248,10 +248,12 @@ async function analyzeOnce() {
   const analysisEpoch = cameraStartEpoch;
   const controller = resources.beginRequest();
   let timedOut = false;
-  const timeout = window.setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, ANALYZE_TIMEOUT_MS);
+  resources.setRequestTimeout(
+    window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, ANALYZE_TIMEOUT_MS),
+  );
   try {
     const blob = await captureFrameBlob();
     if (controller.signal.aborted || analysisEpoch !== cameraStartEpoch) return;
@@ -266,15 +268,15 @@ async function analyzeOnce() {
       body: form,
       signal: controller.signal,
     });
-    const data = await response.json().catch(() => ({}));
     if (controller.signal.aborted || analysisEpoch !== cameraStartEpoch) return;
     if (!response.ok) {
-      const key = data.message_key || data.error || `HTTP ${response.status}`;
       setStatus("Analyze failed", "error");
-      setError(`Analyze error: ${key}`);
+      setError(safeAnalyzeError(response.status));
       clearOverlay();
       return;
     }
+    const data = await response.json().catch(() => ({}));
+    if (controller.signal.aborted || analysisEpoch !== cameraStartEpoch) return;
     // Hard guard: never surface unexpected payload-like keys.
     if ("payload" in data || "decoded" in data || "raw_string" in data) {
       setStatus("Rejected unsafe response", "error");
@@ -299,7 +301,6 @@ async function analyzeOnce() {
     setError("Could not reach the loopback API.");
     clearOverlay();
   } finally {
-    window.clearTimeout(timeout);
     resources.finishRequest(controller);
     syncButtons();
   }

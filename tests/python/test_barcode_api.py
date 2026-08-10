@@ -393,9 +393,7 @@ def test_analyzer_failure_is_content_free_and_capacity_recovers() -> None:
             )
         return _abstain_evidence()
 
-    with TestClient(
-        create_app(analyzer=analyzer), base_url="http://127.0.0.1:8000"
-    ) as client:
+    with TestClient(create_app(analyzer=analyzer), base_url="http://127.0.0.1:8000") as client:
         failed = client.post(
             "/v1/barcode/analyze",
             content=_png_bytes(),

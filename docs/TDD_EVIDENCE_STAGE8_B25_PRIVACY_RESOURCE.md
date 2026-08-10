@@ -210,3 +210,80 @@ Covered launcher behavior at this slice: exact `127.0.0.1` bind, exact approved 
 - Hidden pages stop the camera and require explicit Start to resume.
 
 These are provisional personal-test engineering limits, not validated performance or production limits.
+
+## Integration remediation — independent exact-SHA review blockers
+
+The independent review of browser commit `c2a67ab8bb9c362607632ceb17b194800b1d32fc` found three blockers. The integration worker added regression tests before each production fix.
+
+### Stop-owned analyze timeout and content-free browser errors
+
+RED command:
+
+```text
+node --test apps/web/tests/lifecycle.test.mjs
+```
+
+Observed RED: module instantiation failed because `safeAnalyzeError` was not exported. The same test change also required the camera resource owner to expose and stop-clear the active analyze timeout, and statically rejected `data.message_key` / `data.error` rendering.
+
+GREEN command:
+
+```text
+node --check apps/web/app.js && npm run test:web
+```
+
+Observed GREEN: 8 passed, 0 failed. Stop/Retake/pagehide/beforeunload/hidden/track-ended now clear the owned analyze timeout even while frame capture is pending; stale completion cannot clear a newer request timeout. Non-2xx responses map status only to fixed local copy and never render server-controlled fields.
+
+### Exact web Host boundary
+
+RED command:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_local_web_launcher.py -q
+```
+
+Observed RED: 6 failed, 5 passed. Hostile and malformed Host values reached static-file handling and returned 404 instead of a boundary rejection.
+
+GREEN command:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_local_web_launcher.py -q
+```
+
+Observed GREEN: 11 passed. The launcher accepts exactly `127.0.0.1:<bound-port>` or `localhost:<bound-port>` and returns a fixed content-free 403 for missing, hostile, malformed, userinfo-like, comma-joined, suffix-confusion, and wrong-authority Host values.
+
+### Cross-surface privacy canary
+
+Command:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_b25_privacy_canaries.py -q
+```
+
+Observed: 1 passed on first execution. This is coverage evidence, not fabricated RED. Unmistakable barcode-payload, absolute-local-path, hostile-Origin/Host, and exception-message sentinels were injected. The test proves absence from Host/Origin/analyzer/resource endpoint responses, resource metrics, response `repr`, captured default logs/stdout/stderr, and a temporary persistence surface.
+
+Integrated focused command:
+
+```text
+uvx --from uv==0.11.31 uv run pytest tests/python/test_api_loopback_boundary.py tests/python/test_barcode_api.py tests/python/test_b25_privacy_canaries.py tests/python/test_local_web_launcher.py tests/python/test_resource_measurement.py -q
+```
+
+Observed: 66 passed.
+
+## Integrated final verification before exact-SHA review
+
+- `uvx --from uv==0.11.31 uv run pytest -q` — 386 passed, 1 skipped.
+- `uvx --from uv==0.11.31 uv run ruff check .` — all checks passed.
+- `uvx --from uv==0.11.31 uv run ruff format --check .` — 30 files already formatted.
+- `npm run contracts:check` — generated contract types in sync.
+- `npm run test:ts` — 149 passed, 0 failed, including 8 browser lifecycle tests.
+- `npm run typecheck` — passed.
+- `npm run format:check` — all matched files use Prettier formatting.
+- `npm audit --audit-level=high` — 0 vulnerabilities.
+- `uvx --from uv==0.11.31 uv run python scripts/check_sensitive_files.py` — passed for 243 tracked files.
+- `uvx --from uv==0.11.31 uv run python scripts/measure_live_resources.py --iterations 5 --width 512 --height 384` — exit 0; 5 successful analyses, 0 failed, content-free JSON only.
+- `git diff --check` — passed.
+- Added-file media/model/database scan — no new JPEG/PNG/GIF/WebP/video, SQLite/database, ONNX, or model-weight files.
+- Added-line security scan — no hardcoded-secret, shell-injection, `eval`/`exec`, or unsafe-deserialization patterns.
+- Scope-token review — the sole added B26 mention is the README's explicit exclusion; no LAN listener, persistence implementation, decode path, PaddleOCR, or B26 implementation was added.
+
+Live launcher smoke used the real servers. API startup reported `Uvicorn running on http://127.0.0.1:8000`; the web server reported `('127.0.0.1', 5173)`. Observed statuses were API health 200, API resources 200, hostile API Host 403, web root 200, and hostile web Host 403. Both servers were then stopped.

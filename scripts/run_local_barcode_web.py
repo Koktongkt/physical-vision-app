@@ -41,6 +41,25 @@ class LocalWebHandler(SimpleHTTPRequestHandler):
         self.send_error(404)
         return None
 
+    def parse_request(self) -> bool:
+        if not super().parse_request():
+            return False
+
+        hosts = self.headers.get_all("Host", [])
+        port = self.server.server_address[1]
+        allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if len(hosts) == 1 and hosts[0] in allowed_hosts:
+            return True
+
+        body = b"Local request rejected.\n"
+        self.send_response(403)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+        return False
+
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
         self.send_header(

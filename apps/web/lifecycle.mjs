@@ -18,10 +18,26 @@ export function stopStreamTracks(stream) {
   }
 }
 
+export function safeAnalyzeError(status) {
+  switch (status) {
+    case 403:
+      return "Local API request rejected.";
+    case 413:
+      return "Frame exceeded the local size budget.";
+    case 503:
+      return "Local analyzer is busy.";
+    case 504:
+      return "Analysis exceeded the local time budget.";
+    default:
+      return "Local analysis failed.";
+  }
+}
+
 export function createCameraResources({
   video,
   canvases,
   clearIntervalFn = globalThis.clearInterval,
+  clearTimeoutFn = globalThis.clearTimeout,
   createAbortController = () => new AbortController(),
   onTrackEnded = () => {},
 }) {
@@ -32,6 +48,7 @@ export function createCameraResources({
     stream: null,
     sampleTimer: null,
     requestController: null,
+    requestTimeout: null,
 
     attachStream(stream) {
       resources.stream = stream;
@@ -77,8 +94,21 @@ export function createCameraResources({
       return controller;
     },
 
+    setRequestTimeout(timeout) {
+      resources.clearRequestTimeout();
+      resources.requestTimeout = timeout;
+    },
+
+    clearRequestTimeout() {
+      if (resources.requestTimeout != null) {
+        clearTimeoutFn(resources.requestTimeout);
+        resources.requestTimeout = null;
+      }
+    },
+
     finishRequest(controller) {
       if (resources.requestController === controller) {
+        resources.clearRequestTimeout();
         resources.requestController = null;
       }
     },
@@ -88,6 +118,7 @@ export function createCameraResources({
       stopping = true;
       try {
         resources.clearSampleTimer();
+        resources.clearRequestTimeout();
         resources.requestController?.abort();
         resources.requestController = null;
 

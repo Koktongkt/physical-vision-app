@@ -187,11 +187,7 @@ class LocalRequestBoundaryMiddleware:
             await response(scope, receive, send)
             return
 
-        origins = [
-            value.decode("latin-1")
-            for key, value in headers
-            if key.lower() == b"origin"
-        ]
+        origins = [value.decode("latin-1") for key, value in headers if key.lower() == b"origin"]
         if len(origins) > 1 or (origins and origins[0] not in self.allowed_origins):
             response = JSONResponse(
                 status_code=403,
