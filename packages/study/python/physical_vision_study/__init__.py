@@ -12,9 +12,10 @@ from typing import Any
 from physical_vision_barcode import BarcodeGuidanceAction
 
 MANIFEST_SCHEMA_VERSION = "b26-study-manifest-v1"
-REPORT_SCHEMA_VERSION = "b26-study-report-v2"
+REPORT_SCHEMA_VERSION = "b26-study-report-v3"
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _SAFE_TOKEN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
+_SAFE_BUILD_TEXT = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$")
 _RFC3339_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 _REASON_CODES = ("capture_path_unavailable", "operator_exit")
 _CONTROL_DESIGN = {
@@ -23,7 +24,14 @@ _CONTROL_DESIGN = {
     "two_visible_supported_1d": ("multiple", "supported_1d"),
     "qr_only": ("2d_only", "unsupported_2d"),
 }
-_BOOTSTRAP_WORK_REPLICATES = 10000
+_CHALLENGES = {
+    "nominal",
+    "angle_skew",
+    "ordinary_zero_code",
+    "stripe_text_hard_negative",
+    "two_visible_supported_1d",
+    "qr_only",
+}
 _SUBGROUP_ENUMS = {
     "barcode_family": {"ean_upc_like", "code128_like", "unknown"},
     "scale_distance": {"2_to_8_percent", "unknown"},
@@ -100,6 +108,17 @@ def _require_safe_token(value: object, field: str) -> str:
     return value
 
 
+def _require_safe_build_text(value: object, field: str) -> str:
+    if type(value) is not str or not _SAFE_BUILD_TEXT.fullmatch(value):
+        raise StudyValidationError(f"{field} must be bounded content-free build text")
+    return value
+
+
+def _require_frozen_number(value: object, expected: int | float, field: str) -> None:
+    if type(value) is not type(expected) or not math.isfinite(value) or value != expected:
+        raise StudyValidationError(f"{field} does not match the frozen configuration")
+
+
 def _validate_lock_metadata(value: object) -> dict[str, Any]:
     try:
         lock = _require_mapping(value, "lock")
@@ -152,10 +171,11 @@ def validate_manifest(manifest: object) -> None:
 
     repository = _require_mapping(document["repository"], "repository")
     _require_exact_keys(repository, {"commit", "clean", "app_build"}, "repository")
-    if not _COMMIT_PATTERN.fullmatch(repository["commit"]):
+    if type(repository["commit"]) is not str or not _COMMIT_PATTERN.fullmatch(repository["commit"]):
         raise StudyValidationError("repository commit must be an exact SHA")
-    if repository["clean"] is not True or not repository["app_build"]:
+    if repository["clean"] is not True:
         raise StudyValidationError("repository must identify a clean exact build")
+    _require_safe_build_text(repository["app_build"], "repository app_build")
 
     versions = _require_mapping(document["versions"], "versions")
     _require_exact_keys(
@@ -172,8 +192,10 @@ def validate_manifest(manifest: object) -> None:
         },
         "versions",
     )
-    if versions["report_schema"] != REPORT_SCHEMA_VERSION or not all(versions.values()):
+    if versions["report_schema"] != REPORT_SCHEMA_VERSION:
         raise StudyValidationError("versions must contain exact non-empty values")
+    for field, value in versions.items():
+        _require_safe_build_text(value, f"version {field}")
 
     operator = _require_mapping(document["operator"], "operator")
     _require_exact_keys(operator, {"operator_id", "labeler_id"}, "operator")
@@ -201,6 +223,15 @@ def validate_manifest(manifest: object) -> None:
         raise StudyValidationError("max observations must remain frozen at six")
     if configuration["bootstrap_seed"] != 260826 or configuration["bootstrap_replicates"] != 10000:
         raise StudyValidationError("confidence method configuration does not match protocol")
+    ready_thresholds = _require_mapping(configuration["ready_thresholds"], "ready thresholds")
+    _require_exact_keys(ready_thresholds, {"minimum_area_ratio"}, "ready thresholds")
+    _require_frozen_number(ready_thresholds["minimum_area_ratio"], 0.02, "minimum_area_ratio")
+    tolerances = _require_mapping(configuration["measurement_tolerances"], "measurement tolerances")
+    _require_exact_keys(tolerances, {"area_ratio"}, "measurement tolerances")
+    _require_frozen_number(tolerances["area_ratio"], 0.001, "area_ratio")
+    resource_limits = _require_mapping(configuration["resource_limits"], "resource limits")
+    _require_exact_keys(resource_limits, {"max_in_flight"}, "resource limits")
+    _require_frozen_number(resource_limits["max_in_flight"], 1, "max_in_flight")
 
     capture_paths = document["capture_paths"]
     sessions = document["sessions"]
@@ -270,8 +301,11 @@ def validate_manifest(manifest: object) -> None:
         )
         if session["capture_path_id"] not in capture_ids:
             raise StudyValidationError("session references an unknown capture path")
-        for field in ("session_id", "physical_item_id", "assigned_challenge"):
+        for field in ("session_id", "physical_item_id"):
             _require_safe_token(session[field], f"session {field}")
+        challenge = session["assigned_challenge"]
+        if type(challenge) is not str or challenge not in _CHALLENGES:
+            raise StudyValidationError("assigned challenge is outside the frozen enum")
         if session["max_observations"] != 6:
             raise StudyValidationError("session max observations must remain six")
         if session["scene_truth"] not in {"none", "one", "multiple", "2d_only"}:
@@ -294,6 +328,8 @@ def validate_manifest(manifest: object) -> None:
             _require_safe_token(value, "session subgroup")
             if value not in _SUBGROUP_ENUMS[field]:
                 raise StudyValidationError("session subgroup is outside its frozen enum")
+        if type(session["order"]) is not int:
+            raise StudyValidationError("session order must be an exact integer")
         orders.append(session["order"])
         session_ids.add(session["session_id"])
     if orders != list(range(1, len(sessions) + 1)) or len(session_ids) != len(sessions):
@@ -334,6 +370,19 @@ def validate_manifest(manifest: object) -> None:
             ]:
                 raise StudyValidationError("control scene and target_support coherence is invalid")
 
+    for session in sessions:
+        expected_challenge = (
+            session["control_kind"]
+            if session["control_kind"] != "supported_single"
+            else (
+                "angle_skew"
+                if session["subgroups"]["angle_skew"] == "severe_unknown"
+                else "nominal"
+            )
+        )
+        if session["assigned_challenge"] != expected_challenge:
+            raise StudyValidationError("assigned challenge is incoherent with the frozen design")
+
     canonical_json_bytes(document)
 
 
@@ -359,11 +408,11 @@ def verify_manifest_lock(locked: object) -> None:
     _require_exact_keys(document, {"schema_version", "manifest", "lock"}, "locked manifest")
     if document["schema_version"] != "b26-study-manifest-lock-v1":
         raise StudyValidationError("unsupported lock schema_version")
-    validate_manifest(document["manifest"])
     lock = _validate_lock_metadata(document["lock"])
     actual = hashlib.sha256(canonical_json_bytes(document["manifest"])).hexdigest()
     if lock["algorithm"] != "sha256" or lock["fingerprint"] != actual:
         raise StudyValidationError("manifest fingerprint does not match locked content")
+    validate_manifest(document["manifest"])
 
 
 def _validate_observation(
@@ -453,6 +502,15 @@ def _validate_observation(
         or human["target_support"] != support_by_count[human["count"]]
     ):
         raise StudyValidationError("human target support is incoherent with count")
+    locked_session = sessions[document["session_id"]]
+    locked_count = (
+        "unknown" if locked_session["scene_truth"] == "2d_only" else locked_session["scene_truth"]
+    )
+    if (
+        human["count"] != locked_count
+        or human["target_support"] != locked_session["target_support"]
+    ):
+        raise StudyValidationError("human truth and support must equal the locked session scene")
     if human["ready"] not in {"ready", "not_ready", "unknown"}:
         raise StudyValidationError("human ready label is invalid")
     if type(human["guidance_eligible"]) is not bool:
@@ -598,7 +656,7 @@ def aggregate_live_report(
     observations: list[object],
 ) -> dict[str, Any]:
     verify_manifest_lock(locked)
-    bootstrap_replicates = _BOOTSTRAP_WORK_REPLICATES
+    bootstrap_replicates = 10000
     manifest = locked["manifest"]
     fingerprint = locked["lock"]["fingerprint"]
     sessions = {row["session_id"]: row for row in manifest["sessions"]}
@@ -633,6 +691,23 @@ def aggregate_live_report(
                     "analyzed session requires exactly one terminal row last"
                 )
             terminal = terminal_rows[0]
+            terminal_ready = terminal["system"]["ready"]
+            if (terminal["session_end"] == "ready_shutter") is not terminal_ready:
+                raise StudyValidationError(
+                    "terminal ready and ready_shutter outcome must be exactly equivalent"
+                )
+            for position, row in enumerate(analyzed_rows):
+                transition = row["guidance_transition"]
+                predecessor_guided = (
+                    position > 0
+                    and len(analyzed_rows[position - 1]["system"]["guidance_actions"]) == 1
+                )
+                transition_evaluable = transition in {"improving", "unchanged", "worsening"}
+                if predecessor_guided != transition_evaluable:
+                    raise StudyValidationError(
+                        "guidance transition must exactly follow an immediately "
+                        "preceding guidance action"
+                    )
             if (
                 terminal["session_end"] == "max_observations"
                 and terminal["observation_index"] != sessions[session_id]["max_observations"]
@@ -792,28 +867,41 @@ def aggregate_live_report(
             replicates=bootstrap_replicates,
         ),
     }
-    metric_evidence = {
-        "count_evaluable": sum(evaluable_count(row) for row in analyzed),
-        "count_correct": sum(count_correct(row) for row in analyzed),
-        "human_not_ready": sum(human_not_ready(row) for row in analyzed),
-        "false_ready": sum(false_ready(row) for row in analyzed),
-        "ready_evaluable": sum(ready_evaluable(row) for row in analyzed),
-        "predicted_ready": sum(predicted_ready(row) for row in analyzed),
-        "ready_correct": sum(ready_correct(row) for row in analyzed),
-        "abstention_required": sum(abstention_required(row) for row in analyzed),
-        "system_abstained": sum(system_abstained(row) for row in analyzed),
-        "guidance_eligibility_evaluable": sum(
-            guidance_eligibility_evaluable(row) for row in analyzed
-        ),
-        "guidance_eligibility_correct": sum(guidance_eligibility_correct(row) for row in analyzed),
-        "localization_eligible": sum(localization_eligible(row) for row in analyzed),
-        "localization_succeeded": sum(localization_success(row) for row in analyzed),
-        "guidance_displayed": sum(guidance_displayed(row) for row in analyzed),
-        "exactly_one_action": sum(exactly_one_action(row) for row in analyzed),
-        "transition_evaluable": sum(transition_evaluable(row) for row in analyzed),
-        "transition_improving": sum(transition_improving(row) for row in analyzed),
-        "safety_evaluable": sum(safety_evaluable(row) for row in analyzed),
-        "unsafe_or_worsening": sum(unsafe_or_worsening(row) for row in analyzed),
+    categorical_cell_fields = (
+        "human_count",
+        "human_support",
+        "human_ready",
+        "guidance_eligible",
+        "system_count",
+        "system_ready",
+        "guidance_cardinality",
+        "localization",
+        "transition",
+        "unsafe",
+    )
+    categorical_counts: dict[tuple[object, ...], int] = {}
+    for row in analyzed:
+        cell_key = (
+            row["human"]["count"],
+            row["human"]["target_support"],
+            row["human"]["ready"],
+            row["human"]["guidance_eligible"],
+            row["system"]["count"],
+            row["system"]["ready"],
+            len(row["system"]["guidance_actions"]),
+            "null"
+            if row["system"]["localization_success"] is None
+            else str(row["system"]["localization_success"]).lower(),
+            row["guidance_transition"] or "not_evaluable",
+            row["unsafe"],
+        )
+        categorical_counts[cell_key] = categorical_counts.get(cell_key, 0) + 1
+    categorical_statistics = {
+        "schema_version": "b26-categorical-statistics-v1",
+        "cells": [
+            {**dict(zip(categorical_cell_fields, key, strict=True)), "observations": count}
+            for key, count in sorted(categorical_counts.items(), key=lambda entry: repr(entry[0]))
+        ],
     }
     reason_counts: dict[str, int] = {}
     for row in missing:
@@ -939,7 +1027,7 @@ def aggregate_live_report(
             "replicates": 10000,
         },
         "metrics": metrics,
-        "metric_evidence": metric_evidence,
+        "categorical_statistics": categorical_statistics,
         "count_confusion": confusion,
         "latency_ms": latency,
         "guidance_transitions": transitions,
@@ -981,8 +1069,15 @@ def _validate_reason_counts(value: object, field: str, expected_total: int) -> N
     reasons = _require_mapping(value, field)
     total = 0
     for reason, count in reasons.items():
-        if type(reason) is not str or not reason or type(count) is not int or count <= 0:
-            raise StudyValidationError(f"{field} entries must be non-empty positive counts")
+        if (
+            type(reason) is not str
+            or reason not in _REASON_CODES
+            or type(count) is not int
+            or count <= 0
+        ):
+            raise StudyValidationError(
+                f"{field} entries must use exact reason codes and positive counts"
+            )
         total += count
     if total != expected_total:
         raise StudyValidationError(f"{field} total does not match its session denominator")
@@ -1004,7 +1099,7 @@ def validate_report(report: object) -> None:
             "denominators",
             "confidence_method",
             "metrics",
-            "metric_evidence",
+            "categorical_statistics",
             "count_confusion",
             "latency_ms",
             "guidance_transitions",
@@ -1127,58 +1222,128 @@ def validate_report(report: object) -> None:
         ):
             raise StudyValidationError("usable metric interval is invalid")
 
-    metric_evidence_names = {
-        "count_evaluable",
-        "count_correct",
-        "human_not_ready",
-        "false_ready",
-        "ready_evaluable",
-        "predicted_ready",
-        "ready_correct",
-        "abstention_required",
-        "system_abstained",
-        "guidance_eligibility_evaluable",
-        "guidance_eligibility_correct",
-        "localization_eligible",
-        "localization_succeeded",
-        "guidance_displayed",
-        "exactly_one_action",
-        "transition_evaluable",
-        "transition_improving",
-        "safety_evaluable",
-        "unsafe_or_worsening",
+    statistics = _require_mapping(document["categorical_statistics"], "categorical statistics")
+    _require_exact_keys(statistics, {"schema_version", "cells"}, "categorical statistics")
+    if statistics["schema_version"] != "b26-categorical-statistics-v1":
+        raise StudyValidationError("categorical statistics schema is invalid")
+    cells = statistics["cells"]
+    if type(cells) is not list or len(cells) > analyzed:
+        raise StudyValidationError("categorical statistics cells are invalid")
+    cell_keys = {
+        "human_count",
+        "human_support",
+        "human_ready",
+        "guidance_eligible",
+        "system_count",
+        "system_ready",
+        "guidance_cardinality",
+        "localization",
+        "transition",
+        "unsafe",
+        "observations",
     }
-    evidence = _require_mapping(document["metric_evidence"], "metric evidence")
-    _require_exact_keys(evidence, metric_evidence_names, "metric evidence")
-    for name in metric_evidence_names:
-        if _require_nonnegative_int(evidence[name], f"metric evidence {name}") > analyzed:
-            raise StudyValidationError("metric evidence exceeds analyzed observations")
-    evidence_links = {
-        "count_accuracy": ("count_correct", "count_evaluable"),
-        "false_ready": ("false_ready", "human_not_ready"),
-        "ready_coverage": ("predicted_ready", "ready_evaluable"),
-        "ready_precision": ("ready_correct", "predicted_ready"),
-        "required_abstention": ("system_abstained", "abstention_required"),
-        "guidance_eligibility": (
-            "guidance_eligibility_correct",
-            "guidance_eligibility_evaluable",
-        ),
-        "localization_success": ("localization_succeeded", "localization_eligible"),
-        "exactly_one_action": ("exactly_one_action", "guidance_displayed"),
-        "guidance_improvement": ("transition_improving", "transition_evaluable"),
-        "unsafe_or_worsening": ("unsafe_or_worsening", "safety_evaluable"),
-    }
-    for metric_name, (numerator_name, denominator_name) in evidence_links.items():
+    seen_cells: set[tuple[object, ...]] = set()
+    normalized_cells: list[dict[str, Any]] = []
+    for cell_value in cells:
+        cell = _require_mapping(cell_value, "categorical statistics cell")
+        _require_exact_keys(cell, cell_keys, "categorical statistics cell")
         if (
-            metrics[metric_name]["numerator"] != evidence[numerator_name]
-            or metrics[metric_name]["denominator"] != evidence[denominator_name]
+            cell["human_count"] not in {"none", "one", "multiple", "unknown"}
+            or cell["human_support"] not in {"supported_1d", "hard_negative", "unsupported_2d"}
+            or cell["human_ready"] not in {"ready", "not_ready", "unknown"}
+            or type(cell["guidance_eligible"]) is not bool
+            or cell["system_count"] not in {"none", "one", "multiple", "unknown"}
+            or type(cell["system_ready"]) is not bool
+            or type(cell["guidance_cardinality"]) is not int
+            or cell["guidance_cardinality"] not in {0, 1}
+            or cell["localization"] not in {"true", "false", "null"}
+            or cell["transition"] not in {"improving", "unchanged", "worsening", "not_evaluable"}
+            or type(cell["unsafe"]) is not bool
         ):
-            raise StudyValidationError("metric is incoherent with independent aggregate evidence")
-    if any(
-        evidence[numerator] > evidence[denominator]
-        for numerator, denominator in evidence_links.values()
-    ):
-        raise StudyValidationError("metric evidence numerator exceeds denominator")
+            raise StudyValidationError("categorical statistics cell category is invalid")
+        count = _require_nonnegative_int(cell["observations"], "categorical cell observations")
+        if not count:
+            raise StudyValidationError("categorical statistics omit zero-count cells")
+        identity = tuple(cell[key] for key in sorted(cell_keys - {"observations"}))
+        if identity in seen_cells:
+            raise StudyValidationError("categorical statistics cells are duplicated")
+        seen_cells.add(identity)
+        normalized_cells.append(cell)
+    if sum(cell["observations"] for cell in normalized_cells) != analyzed:
+        raise StudyValidationError("categorical statistics total must equal analyzed observations")
+
+    def cell_total(predicate) -> int:
+        return sum(cell["observations"] for cell in normalized_cells if predicate(cell))
+
+    metric_pairs = {
+        "count_accuracy": (
+            cell_total(
+                lambda cell: cell["human_count"] != "unknown"
+                and cell["human_count"] == cell["system_count"]
+            ),
+            cell_total(lambda cell: cell["human_count"] != "unknown"),
+        ),
+        "false_ready": (
+            cell_total(lambda cell: cell["human_ready"] == "not_ready" and cell["system_ready"]),
+            cell_total(lambda cell: cell["human_ready"] == "not_ready"),
+        ),
+        "ready_coverage": (
+            cell_total(
+                lambda cell: cell["human_ready"] in {"ready", "not_ready"} and cell["system_ready"]
+            ),
+            cell_total(lambda cell: cell["human_ready"] in {"ready", "not_ready"}),
+        ),
+        "ready_precision": (
+            cell_total(lambda cell: cell["system_ready"] and cell["human_ready"] == "ready"),
+            cell_total(
+                lambda cell: cell["system_ready"] and cell["human_ready"] in {"ready", "not_ready"}
+            ),
+        ),
+        "required_abstention": (
+            cell_total(
+                lambda cell: cell["human_count"] in {"none", "multiple", "unknown"}
+                and not cell["system_ready"]
+                and cell["guidance_cardinality"] == 0
+            ),
+            cell_total(lambda cell: cell["human_count"] in {"none", "multiple", "unknown"}),
+        ),
+        "guidance_eligibility": (
+            cell_total(
+                lambda cell: cell["human_ready"] == "not_ready"
+                and cell["guidance_eligible"] == (cell["guidance_cardinality"] == 1)
+            ),
+            cell_total(lambda cell: cell["human_ready"] == "not_ready"),
+        ),
+        "localization_success": (
+            cell_total(
+                lambda cell: cell["human_count"] == "one" and cell["localization"] == "true"
+            ),
+            cell_total(
+                lambda cell: cell["human_count"] == "one" and cell["localization"] != "null"
+            ),
+        ),
+        "exactly_one_action": (
+            cell_total(lambda cell: cell["guidance_cardinality"] == 1),
+            cell_total(lambda cell: cell["guidance_cardinality"] == 1),
+        ),
+        "guidance_improvement": (
+            cell_total(lambda cell: cell["transition"] == "improving"),
+            cell_total(lambda cell: cell["transition"] in {"improving", "unchanged", "worsening"}),
+        ),
+        "unsafe_or_worsening": (
+            cell_total(lambda cell: cell["unsafe"] or cell["transition"] == "worsening"),
+            cell_total(
+                lambda cell: cell["unsafe"]
+                or cell["transition"] in {"improving", "unchanged", "worsening"}
+            ),
+        ),
+    }
+    for name, (expected_numerator, expected_denominator) in metric_pairs.items():
+        if (
+            metrics[name]["numerator"] != expected_numerator
+            or metrics[name]["denominator"] != expected_denominator
+        ):
+            raise StudyValidationError("metric is incoherent with categorical statistics")
 
     count_classes = {"none", "one", "multiple", "unknown"}
     confusion = _require_mapping(document["count_confusion"], "count confusion")
@@ -1231,7 +1396,7 @@ def validate_report(report: object) -> None:
     if (
         metrics["guidance_improvement"]["denominator"] != transition_evaluable
         or metrics["guidance_improvement"]["numerator"] != transitions["improving"]
-        or metrics["unsafe_or_worsening"]["denominator"] != evidence["safety_evaluable"]
+        or metrics["unsafe_or_worsening"]["denominator"] != metric_pairs["unsafe_or_worsening"][1]
         or metrics["unsafe_or_worsening"]["numerator"] < transitions["worsening"]
     ):
         raise StudyValidationError("transition metrics are incoherent")
@@ -1349,12 +1514,15 @@ def validate_report(report: object) -> None:
         item_id, ids = group["physical_item_id"], group["session_ids"]
         if (
             type(item_id) is not str
-            or not item_id
+            or not _SAFE_TOKEN.fullmatch(item_id)
             or item_id in group_ids
             or type(ids) is not list
             or not ids
             or ids != sorted(ids)
-            or any(type(session_id) is not str or not session_id for session_id in ids)
+            or any(
+                type(session_id) is not str or not _SAFE_TOKEN.fullmatch(session_id)
+                for session_id in ids
+            )
             or session_ids.intersection(ids)
         ):
             raise StudyValidationError("groups contain invalid or duplicate identities")
@@ -1379,7 +1547,7 @@ def validate_report(report: object) -> None:
             "item summary",
         )
         item_id = summary["physical_item_id"]
-        if type(item_id) is not str or not item_id or item_id in summary_ids:
+        if type(item_id) is not str or not _SAFE_TOKEN.fullmatch(item_id) or item_id in summary_ids:
             raise StudyValidationError("item summary identity is invalid or duplicated")
         summary_ids.add(item_id)
         observations = _require_nonnegative_int(

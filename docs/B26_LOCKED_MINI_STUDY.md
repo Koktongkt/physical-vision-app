@@ -14,8 +14,8 @@ This workflow implements the bounded evidence harness required by `docs/IMPLEMEN
 
 - `b26-study-manifest-v1`: exact versions, frozen configuration, capture paths, preregistered reasons, and ordered session plan;
 - `b26-study-manifest-lock-v1`: canonical SHA-256 fingerprint plus UTC lock time and pseudonymous signer; and
-- `b26-study-report-v2`: deterministic content-free aggregates with explicit status, claim
-  boundaries, and sufficient content-free metric evidence counters.
+- `b26-study-report-v3`: deterministic content-free aggregates with explicit status, claim
+  boundaries, and compact categorical sufficient statistics.
 
 It also validates `b26-public-supplement-report-v1`. The current public decision is an omitted report because no audited source has verified artifact-specific image rights plus transitive provenance.
 
@@ -23,20 +23,28 @@ Canonical JSON is ASCII UTF-8, sorted by key, compact separators, finite JSON nu
 
 The observation action contract is exactly the non-`NONE` product `BarcodeGuidanceAction` enum: `camera_closer`, `camera_farther`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `camera_steady`, and `reduce_glare`. Each system decision has at most one action, so a displayed guidance decision has exactly one; absence remains measurable rather than being rejected based on the human label. Fictional `move_*` and `tilt` values fail closed.
 
-Observation labels and decisions are coherent, not merely shape-valid. Human `target_support` is the
-exact `supported_1d` / `hard_negative` / `unsupported_2d` enum and must agree with human count;
+Observation labels and decisions are coherent, not merely shape-valid. Human count and
+`target_support` must equal the locked session scene/truth; support is the exact `supported_1d` /
+`hard_negative` / `unsupported_2d` enum and must also agree with human count;
 human ready cannot coexist with guidance eligibility. System readiness and guidance require count
 `one` and successful localization; non-`one` decisions require null localization and no readiness or
 guidance. Localization is exact boolean/null. Latency is finite and nonnegative with booleans
 rejected. An unsafe row is always included in `unsafe_or_worsening`, including when its transition is
 `not_evaluable`.
 
+The terminal system `ready` decision is exactly equivalent to a `ready_shutter` terminal outcome.
+An evaluable guidance transition is present exactly when the immediately preceding observation
+displayed one guidance action; a guided predecessor may not disappear into `not_evaluable`, and a
+transition may not be attributed without that predecessor.
+
 The live manifest requires these exact-value groups before lock:
 
 - clean repository commit and app build;
 - report, OpenCV, detector recipe, ready policy, guidance policy, Python, browser, and OS versions;
 - payload-decode-off and learned-detector-off assertions;
-- frozen ready thresholds, measurement tolerances, resource limits, seed `260826`, 10,000 bootstrap replicates, and six observations per session;
+- exact-shape and exact-type frozen ready thresholds, measurement tolerances, resource limits, seed
+  `260826`, 10,000 bootstrap replicates, and six observations per session; production aggregation
+  cannot reduce the bootstrap work through a mutable module attribute;
 - pseudonymous operator/labeler IDs;
 - exactly two capture paths with explicit `desktop_webcam` and `phone_camera` roles, bounded
   pseudonymous device/camera tokens, positive two-integer resolution, and bounded sample rate; and
@@ -48,7 +56,10 @@ The allowed-reason list is the exact bounded protocol enum (maximum six entries)
 labels are safe bounded tokens drawn from frozen enums. Lock metadata uses a valid-calendar strict
 RFC3339 UTC timestamp with literal `Z` and a bounded content-free pseudonymous signer.
 
-IDs must be non-content identifiers. Validators reject path/URL/image-byte/payload-like fields, 12–14 digit payload-like values, Host/Origin material, data-image values, and exception-like text with content-free errors.
+IDs must be bounded safe non-content identifiers, and missing/exclusion reason maps accept only the
+frozen reason-code enum. Repository build and version fields are bounded content-free build tokens.
+Validators reject path/URL/image-byte/payload-like fields, 12–14 digit payload-like values,
+Host/Origin material, data-image values, and exception-like text with content-free errors.
 
 ## Commands
 
@@ -85,7 +96,7 @@ Expected duration: 60–90 minutes. A human with the real desktop webcam and pho
 
 ## Report interpretation
 
-The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. Report v2 adds compact, content-free `metric_evidence` counters sufficient to bind every metric numerator and denominator independently of the supplied metric object. The versioned report validator fails closed on every exact nested shape/type/range and on denominator, metric/evidence, confidence, confusion, latency, transition, subgroup, diagnostic, attempt, outcome, item, reason-total, group, status/evidence, and cross-field inconsistency.
+The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. Report v3 adds a compact, content-free categorical sufficient-statistics table over the minimum human/system/transition/safety dimensions needed to recompute every metric numerator and denominator independently of the supplied metric object. Cells have exact categorical fields, are unique and positive-count only, and partition all analyzed observations; they contain no IDs, paths, payloads, or free text. The versioned report validator fails closed on every exact nested shape/type/range and on denominator, metric/statistics, confidence, confusion, latency, transition, subgroup, diagnostic, attempt, outcome, item, reason-total, group, status/evidence, and cross-field inconsistency.
 
 The public report remains separately titled `offline_public_supplement`, has zero denominators, and makes every live claim boundary false. Live and public denominators are never pooled.
 

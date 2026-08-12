@@ -68,7 +68,26 @@ No live physical observation was created or inferred. Status remains `protocol_o
 
 ```text
 uvx --from uv==0.11.31 uv run pytest tests/python/test_b26_study.py -q
-104 passed in 1.57s
+132 passed
 ```
+
+11. Final fail-closed report-v3 remediation
+    - RED: `uvx --from uv==0.11.31 uv run pytest tests/python/test_b26_study.py -q`
+    - Observed: `117 failed, 15 passed`. The genuine whole-file RED followed the report schema
+      fixture change and demonstrated that the implementation still emitted report-v2 counters and
+      did not enforce the newly frozen scalar types/values, locked human truth, terminal
+      ready/outcome equivalence, immediately-preceding-guidance transition rule, immutable
+      production bootstrap work, or exact reason/identity tokens.
+    - GREEN: the same focused suite produced `132 passed`. Report v3 replaces the duplicated
+      `metric_evidence` counters with a compact, content-free categorical sufficient-statistics
+      table. Its bounded joint cells preserve only the categorical dimensions required to recompute
+      every metric numerator and denominator; exact keys, enums, types, uniqueness, positive cell
+      counts, analyzed-observation totals, and every derived metric pair are validated fail closed.
+    - The minimal fixes also freeze repository/version text, configuration scalar shapes/types and
+      values, session order/challenge coherence, human truth/support against the locked scene,
+      terminal `ready_shutter` equivalence, guidance-transition sequencing, the 10,000-replicate
+      production bootstrap call, and exact missing/exclusion reason codes and report identities.
+    - All fixtures remain synthetic contract data. No live evidence or public supplement was added;
+      status remains `protocol_only` / `live_pending` / `public_supplement_omitted`.
 
 Final repository-wide gates are recorded in the PR and task handoff after execution. This file never claims unexecuted gates passed.

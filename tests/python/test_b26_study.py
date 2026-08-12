@@ -43,7 +43,7 @@ def _subgroups(index: int, *, control: bool = False) -> dict[str, str]:
         if control
         else ("ean_upc_like" if index % 2 else "code128_like"),
         "scale_distance": "unknown" if control else "2_to_8_percent",
-        "angle_skew": "unknown" if control else "nominal",
+        "angle_skew": "unknown" if control else ("nominal" if index % 2 else "severe_unknown"),
         "blur_motion": "unknown" if control else "none",
         "crop_margin": "unknown" if control else "clear",
         "glare_exposure": "unknown" if control else "none",
@@ -105,7 +105,7 @@ def _manifest() -> dict:
             "app_build": "stage8-af0541e",
         },
         "versions": {
-            "report_schema": "b26-study-report-v2",
+            "report_schema": "b26-study-report-v3",
             "opencv": "4.12.0.88",
             "detector_recipe": "barcode-frame-v1",
             "ready_policy": "barcode-ready-v1",
@@ -351,6 +351,48 @@ def test_lock_metadata_fails_closed(locked_at: str, signer: str) -> None:
         lock_manifest(_manifest(), locked_at=locked_at, signer_id=signer)
 
 
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("sessions", 0, "order"), True),
+        (("repository", "app_build"), True),
+        (("repository", "app_build"), "a" * 65),
+        (("versions", "browser"), True),
+        (("versions", "browser"), "Chrome 140 private workstation"),
+        (("configuration", "ready_thresholds", "minimum_area_ratio"), True),
+        (("configuration", "ready_thresholds", "minimum_area_ratio"), float("inf")),
+        (("configuration", "measurement_tolerances", "area_ratio"), -0.1),
+        (("configuration", "resource_limits", "max_in_flight"), True),
+        (("configuration", "resource_limits", "max_in_flight"), 2),
+    ],
+)
+def test_manifest_frozen_scalar_types_and_values_fail_closed(
+    path: tuple[str | int, ...], value: object
+) -> None:
+    manifest = _manifest()
+    _set_path(manifest, path, value)
+    with pytest.raises(StudyValidationError):
+        validate_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    "section", ["ready_thresholds", "measurement_tolerances", "resource_limits"]
+)
+def test_manifest_frozen_configuration_shapes_fail_closed(section: str) -> None:
+    manifest = _manifest()
+    manifest["configuration"][section]["arbitrary"] = 1
+    with pytest.raises(StudyValidationError):
+        validate_manifest(manifest)
+
+
+def test_assigned_challenge_is_frozen_and_coherent() -> None:
+    for value in ("invented", True, "blur_motion"):
+        manifest = _manifest()
+        manifest["sessions"][0]["assigned_challenge"] = value
+        with pytest.raises(StudyValidationError, match="challenge"):
+            validate_manifest(manifest)
+
+
 def test_verify_revalidates_lock_metadata_exact_shape_and_type() -> None:
     for mutation in ("time", "signer", "extra", "fingerprint_type"):
         locked = _locked()
@@ -386,6 +428,27 @@ def test_completed_requires_full_24_session_coverage() -> None:
     assert report["denominators"]["attempted_sessions"] == 24
     assert report["denominators"]["missing_sessions"] == 0
     assert report["denominators"]["excluded_sessions"] == 0
+
+
+def test_production_bootstrap_work_cannot_be_reduced_by_mutable_module_attributes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def recording_interval(rows, sessions, predicate, eligible, *, replicates):
+        calls.append(replicates)
+        denominator = sum(eligible(row) for row in rows)
+        if not denominator:
+            return {"lower": None, "upper": None, "usable_replicates": 0}
+        value = round(sum(predicate(row) and eligible(row) for row in rows) / denominator, 6)
+        return {"lower": value, "upper": value, "usable_replicates": replicates}
+
+    monkeypatch.setattr(study, "_cluster_interval", recording_interval)
+    monkeypatch.setattr(study, "_BOOTSTRAP_WORK_REPLICATES", 1, raising=False)
+    locked = _locked()
+    report = aggregate_live_report(locked, _all_analyzed(locked))
+    assert calls == [10000] * 10
+    assert report["confidence_method"]["replicates"] == 10000
 
 
 @pytest.mark.parametrize("partial", ["missing", "excluded", "unaccounted"])
@@ -533,44 +596,61 @@ def test_unsafe_not_evaluable_is_included_in_safety_metric() -> None:
     assert report["metrics"]["unsafe_or_worsening"]["denominator"] == 1
 
 
-def test_live_report_metrics_are_cross_bound_to_independent_evidence() -> None:
+@pytest.mark.parametrize(
+    ("session_index", "count", "support"),
+    [
+        (0, "none", "hard_negative"),
+        (8, "one", "supported_1d"),
+        (10, "one", "supported_1d"),
+        (11, "none", "hard_negative"),
+    ],
+)
+def test_analyzed_human_truth_is_bound_to_locked_scene(
+    session_index: int, count: str, support: str
+) -> None:
+    locked = _locked()
+    rows = _all_analyzed(locked)
+    rows[session_index]["human"].update(count=count, target_support=support)
+    with pytest.raises(StudyValidationError, match="locked|truth|support"):
+        aggregate_live_report(locked, rows)
+
+
+def test_live_report_metrics_are_cross_bound_to_independent_categorical_statistics() -> None:
     report = _completed_report()
-    assert set(report["metric_evidence"]) == {
-        "count_evaluable",
-        "count_correct",
-        "human_not_ready",
-        "false_ready",
-        "ready_evaluable",
-        "predicted_ready",
-        "ready_correct",
-        "abstention_required",
-        "system_abstained",
-        "guidance_eligibility_evaluable",
-        "guidance_eligibility_correct",
-        "localization_eligible",
-        "localization_succeeded",
-        "guidance_displayed",
-        "exactly_one_action",
-        "transition_evaluable",
-        "transition_improving",
-        "safety_evaluable",
-        "unsafe_or_worsening",
-    }
+    assert "metric_evidence" not in report
+    statistics = report["categorical_statistics"]
+    assert set(statistics) == {"schema_version", "cells"}
+    assert (
+        sum(cell["observations"] for cell in statistics["cells"])
+        == report["denominators"]["analyzed_observations"]
+    )
     for metric_name in report["metrics"]:
         forged = copy.deepcopy(report)
         metric = forged["metrics"][metric_name]
         metric["denominator"] += 1
         metric["value"] = round(metric["numerator"] / metric["denominator"], 6)
-        with pytest.raises(StudyValidationError, match="metric|evidence|incoherent"):
+        with pytest.raises(StudyValidationError, match="metric|categorical|statistics|incoherent"):
             validate_report(forged)
 
 
-def test_live_report_metric_evidence_mutations_fail_closed() -> None:
+def test_live_report_categorical_statistics_mutations_fail_closed() -> None:
     report = _completed_report()
-    for counter in report["metric_evidence"]:
+    for field in report["categorical_statistics"]["cells"][0]:
         forged = copy.deepcopy(report)
-        forged["metric_evidence"][counter] += 1
+        cell = forged["categorical_statistics"]["cells"][0]
+        cell[field] = cell[field] + 1 if field == "observations" else "forged"
         with pytest.raises(StudyValidationError):
+            validate_report(forged)
+
+
+def test_forged_each_metric_pair_is_rejected_from_categorical_cells() -> None:
+    report = _completed_report()
+    for metric_name in report["metrics"]:
+        forged = copy.deepcopy(report)
+        metric = forged["metrics"][metric_name]
+        metric["denominator"] += 1
+        metric["value"] = round(metric["numerator"] / metric["denominator"], 6)
+        with pytest.raises(StudyValidationError, match="metric|categorical|statistics|incoherent"):
             validate_report(forged)
 
 
@@ -636,6 +716,71 @@ def test_public_report_is_strict_and_content_free() -> None:
         validate_public_supplement_report(unsafe)
     assert str(raised.value) == "document contains prohibited sensitive content"
     assert "Private" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "end,ready",
+    [("ready_shutter", False), ("user_exit", True), ("max_observations", True)],
+)
+def test_terminal_outcome_is_exactly_bound_to_terminal_ready(end: str, ready: bool) -> None:
+    locked = _locked()
+    rows = _all_analyzed(locked)
+    rows[0]["session_end"] = end
+    rows[0]["system"].update(ready=ready, guidance_actions=[], localization_success=True)
+    with pytest.raises(StudyValidationError, match="ready|terminal|shutter"):
+        aggregate_live_report(locked, rows)
+
+
+@pytest.mark.parametrize("transition", ["improving", "unchanged", "worsening"])
+def test_transition_requires_immediately_preceding_guidance(transition: str) -> None:
+    locked = _locked()
+    rows = _all_analyzed(locked)
+    first = rows.pop(0)
+    first["session_end"] = None
+    second = copy.deepcopy(first)
+    second["observation_index"] = 2
+    second["session_end"] = "user_exit"
+    second["guidance_transition"] = transition
+    rows.extend([first, second])
+    with pytest.raises(StudyValidationError, match="transition|preceding|guidance"):
+        aggregate_live_report(locked, rows)
+
+
+def test_guided_predecessor_requires_evaluable_transition() -> None:
+    locked = _locked()
+    rows = _all_analyzed(locked)
+    first = rows.pop(0)
+    first["session_end"] = None
+    first["system"]["guidance_actions"] = ["camera_closer"]
+    second = copy.deepcopy(first)
+    second["observation_index"] = 2
+    second["session_end"] = "user_exit"
+    second["system"]["guidance_actions"] = []
+    second["guidance_transition"] = "improving"
+    rows.extend([first, second])
+    aggregate_live_report(locked, rows)
+    second["guidance_transition"] = None
+    with pytest.raises(StudyValidationError, match="transition|guidance"):
+        aggregate_live_report(locked, rows)
+
+
+def test_standalone_report_identity_and_reason_tokens_are_strict() -> None:
+    report = _completed_report()
+    mutations = [
+        (("groups", 0, "physical_item_id"), "unsafe identity!"),
+        (("groups", 0, "session_ids", 0), "a" * 65),
+        (("item_summaries", 0, "physical_item_id"), True),
+    ]
+    for path, value in mutations:
+        forged = copy.deepcopy(report)
+        _set_path(forged, path, value)
+        with pytest.raises(StudyValidationError, match="identit|token|group|summary"):
+            validate_report(forged)
+    locked = _locked()
+    pending = aggregate_live_report(locked, _accounting(locked))
+    pending["missing_reasons"] = {"invented_reason": 24}
+    with pytest.raises(StudyValidationError, match="reason"):
+        validate_report(pending)
 
 
 @pytest.mark.parametrize(
