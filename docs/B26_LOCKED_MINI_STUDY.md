@@ -35,7 +35,8 @@ rejected. An unsafe row is always included in `unsafe_or_worsening`, including w
 The terminal system `ready` decision is exactly equivalent to a `ready_shutter` terminal outcome.
 An evaluable guidance transition is present exactly when the immediately preceding observation
 displayed one guidance action; a guided predecessor may not disappear into `not_evaluable`, and a
-transition may not be attributed without that predecessor.
+transition may not be attributed without that predecessor. Therefore a guided row must have an
+immediate successor in the same session and cannot be terminal.
 
 The live manifest requires these exact-value groups before lock:
 
@@ -70,7 +71,7 @@ Run commands from the repository root with the pinned Python environment:
 .venv/Scripts/python.exe scripts/run_b26_study.py lock-manifest --input <manifest.json> --locked-at <UTC-Z> --signer-id <pseudonym> --output <locked.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py validate --kind lock --input <locked.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py aggregate-live --locked-manifest <locked.json> --observations <observations.json> --output <report.json>
-.venv/Scripts/python.exe scripts/run_b26_study.py validate --kind report --input <report.json>
+.venv/Scripts/python.exe scripts/run_b26_study.py validate --kind report --input <report.json> --locked-manifest <locked.json> --observations <observations.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py validate --kind public-report --input <public-report.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py public-supplement --decision omitted --output docs/B26_PUBLIC_SUPPLEMENT_REPORT.json
 ```
@@ -96,7 +97,7 @@ Expected duration: 60–90 minutes. A human with the real desktop webcam and pho
 
 ## Report interpretation
 
-The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. Report v3 adds a compact, content-free categorical sufficient-statistics table over the minimum human/system/transition/safety dimensions needed to recompute every metric numerator and denominator independently of the supplied metric object. Cells have exact categorical fields, are unique and positive-count only, and partition all analyzed observations; they contain no IDs, paths, payloads, or free text. The versioned report validator fails closed on every exact nested shape/type/range and on denominator, metric/statistics, confidence, confusion, latency, transition, subgroup, diagnostic, attempt, outcome, item, reason-total, group, status/evidence, and cross-field inconsistency.
+The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. Report v3 adds a compact, content-free categorical sufficient-statistics table over the minimum human/system/transition/safety dimensions needed for transparent audit. Cells have exact categorical fields, are unique and positive-count only, and partition all analyzed observations; they contain no IDs, paths, payloads, or free text. A standalone aggregate cannot self-authenticate, even when an attacker changes a metric and its supporting cell consistently. Public `validate_report` therefore requires the locked manifest and canonical observation list, reruns the production aggregator with exactly 10,000 bootstrap replicates, and requires byte-for-byte canonical equality. The private structural validator is used only inside aggregation and structure-focused tests to avoid recursion. Report subgroup labels are safe bounded tokens drawn from the locked capture-path IDs or frozen subgroup enums; a pending report has exactly `{}` subgroups.
 
 The public report remains separately titled `offline_public_supplement`, has zero denominators, and makes every live claim boundary false. Live and public denominators are never pooled.
 

@@ -43,6 +43,8 @@ def main() -> None:
         "--kind", choices=("manifest", "lock", "report", "public-report"), required=True
     )
     validate.add_argument("--input", type=Path, required=True)
+    validate.add_argument("--locked-manifest", type=Path)
+    validate.add_argument("--observations", type=Path)
 
     lock = commands.add_parser("lock-manifest")
     lock.add_argument("--input", type=Path, required=True)
@@ -62,13 +64,26 @@ def main() -> None:
     arguments = parser.parse_args()
     if arguments.command == "validate":
         document = _read_json(arguments.input)
+        if arguments.kind == "report" and (
+            arguments.locked_manifest is None or arguments.observations is None
+        ):
+            parser.error("validate --kind report requires --locked-manifest and --observations")
         validators = {
             "manifest": validate_manifest,
             "lock": verify_manifest_lock,
-            "report": validate_report,
             "public-report": validate_public_supplement_report,
         }
-        validators[arguments.kind](document)
+        if arguments.kind == "report":
+            observations = _read_json(arguments.observations)
+            if type(observations) is not list:
+                raise ValueError("observations input must be a JSON array")
+            validate_report(
+                document,
+                locked=_read_json(arguments.locked_manifest),
+                observations=observations,
+            )
+        else:
+            validators[arguments.kind](document)
         print(f"valid {arguments.kind}")
     elif arguments.command == "lock-manifest":
         locked = lock_manifest(

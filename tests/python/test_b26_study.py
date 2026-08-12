@@ -204,6 +204,12 @@ def _completed_report() -> dict:
     return aggregate_live_report(locked, _all_analyzed(locked))
 
 
+def _completed_context() -> tuple[dict, list[dict], dict]:
+    locked = _locked()
+    observations = _all_analyzed(locked)
+    return locked, observations, aggregate_live_report(locked, observations)
+
+
 def _set_path(document: dict, path: tuple[str | int, ...], value: object) -> None:
     target: object = document
     for part in path[:-1]:
@@ -415,10 +421,32 @@ def test_public_aggregation_api_has_no_replicate_override_and_reports_locked_100
     report = aggregate_live_report(locked, _all_analyzed(locked))
     assert report["confidence_method"]["seed"] == 260826
     assert report["confidence_method"]["replicates"] == 10000
-    validate_report(report)
+    validate_report(report, locked=locked, observations=_all_analyzed(locked))
     report["confidence_method"]["replicates"] = 20
     with pytest.raises(StudyValidationError, match="confidence"):
-        validate_report(report)
+        validate_report(report, locked=locked, observations=_all_analyzed(locked))
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("configuration", "max_observations_per_session"), True),
+        (("configuration", "max_observations_per_session"), 6.0),
+        (("configuration", "bootstrap_seed"), True),
+        (("configuration", "bootstrap_seed"), 260826.0),
+        (("configuration", "bootstrap_replicates"), True),
+        (("configuration", "bootstrap_replicates"), 10000.0),
+        (("sessions", 0, "max_observations"), True),
+        (("sessions", 0, "max_observations"), 6.0),
+    ],
+)
+def test_frozen_integer_fields_reject_bool_and_float(
+    path: tuple[str | int, ...], value: object
+) -> None:
+    manifest = _manifest()
+    _set_path(manifest, path, value)
+    with pytest.raises(StudyValidationError, match="integer|frozen|six|confidence"):
+        validate_manifest(manifest)
 
 
 def test_completed_requires_full_24_session_coverage() -> None:
@@ -489,8 +517,17 @@ def test_zero_evidence_all_accounted_remains_pending() -> None:
 def test_each_product_action_is_accepted(action: str) -> None:
     locked = _locked()
     rows = _all_analyzed(locked)
-    rows[0]["system"]["guidance_actions"] = [action]
-    rows[0]["human"]["guidance_eligible"] = True
+    first = rows.pop(0)
+    first["session_end"] = None
+    first["system"]["guidance_actions"] = [action]
+    first["human"]["guidance_eligible"] = True
+    successor = copy.deepcopy(first)
+    successor["observation_index"] = 2
+    successor["session_end"] = "user_exit"
+    successor["system"]["guidance_actions"] = []
+    successor["human"]["guidance_eligible"] = False
+    successor["guidance_transition"] = "unchanged"
+    rows.extend([first, successor])
     aggregate_live_report(locked, rows)
 
 
@@ -616,7 +653,7 @@ def test_analyzed_human_truth_is_bound_to_locked_scene(
 
 
 def test_live_report_metrics_are_cross_bound_to_independent_categorical_statistics() -> None:
-    report = _completed_report()
+    locked, observations, report = _completed_context()
     assert "metric_evidence" not in report
     statistics = report["categorical_statistics"]
     assert set(statistics) == {"schema_version", "cells"}
@@ -630,28 +667,28 @@ def test_live_report_metrics_are_cross_bound_to_independent_categorical_statisti
         metric["denominator"] += 1
         metric["value"] = round(metric["numerator"] / metric["denominator"], 6)
         with pytest.raises(StudyValidationError, match="metric|categorical|statistics|incoherent"):
-            validate_report(forged)
+            validate_report(forged, locked=locked, observations=observations)
 
 
 def test_live_report_categorical_statistics_mutations_fail_closed() -> None:
-    report = _completed_report()
+    locked, observations, report = _completed_context()
     for field in report["categorical_statistics"]["cells"][0]:
         forged = copy.deepcopy(report)
         cell = forged["categorical_statistics"]["cells"][0]
         cell[field] = cell[field] + 1 if field == "observations" else "forged"
         with pytest.raises(StudyValidationError):
-            validate_report(forged)
+            validate_report(forged, locked=locked, observations=observations)
 
 
 def test_forged_each_metric_pair_is_rejected_from_categorical_cells() -> None:
-    report = _completed_report()
+    locked, observations, report = _completed_context()
     for metric_name in report["metrics"]:
         forged = copy.deepcopy(report)
         metric = forged["metrics"][metric_name]
         metric["denominator"] += 1
         metric["value"] = round(metric["numerator"] / metric["denominator"], 6)
         with pytest.raises(StudyValidationError, match="metric|categorical|statistics|incoherent"):
-            validate_report(forged)
+            validate_report(forged, locked=locked, observations=observations)
 
 
 @pytest.mark.parametrize(
@@ -764,6 +801,25 @@ def test_guided_predecessor_requires_evaluable_transition() -> None:
         aggregate_live_report(locked, rows)
 
 
+@pytest.mark.parametrize("transition", [None, "not_evaluable"])
+def test_terminal_guided_row_is_rejected_without_immediate_successor(
+    transition: str | None,
+) -> None:
+    locked = _locked()
+    rows = _all_analyzed(locked)
+    rows[0]["system"]["guidance_actions"] = ["camera_closer"]
+    rows[0]["human"]["guidance_eligible"] = True
+    rows[0]["guidance_transition"] = transition
+    with pytest.raises(StudyValidationError, match="successor|transition|guidance|terminal"):
+        aggregate_live_report(locked, rows)
+
+
+def test_standalone_report_validation_requires_authoritative_context() -> None:
+    report = _completed_report()
+    with pytest.raises(TypeError):
+        validate_report(report)  # type: ignore[call-arg]
+
+
 def test_standalone_report_identity_and_reason_tokens_are_strict() -> None:
     report = _completed_report()
     mutations = [
@@ -775,12 +831,12 @@ def test_standalone_report_identity_and_reason_tokens_are_strict() -> None:
         forged = copy.deepcopy(report)
         _set_path(forged, path, value)
         with pytest.raises(StudyValidationError, match="identit|token|group|summary"):
-            validate_report(forged)
+            study._validate_report_structure(forged)
     locked = _locked()
     pending = aggregate_live_report(locked, _accounting(locked))
     pending["missing_reasons"] = {"invented_reason": 24}
     with pytest.raises(StudyValidationError, match="reason"):
-        validate_report(pending)
+        study._validate_report_structure(pending)
 
 
 @pytest.mark.parametrize(
@@ -805,10 +861,134 @@ def test_standalone_report_identity_and_reason_tokens_are_strict() -> None:
     ],
 )
 def test_versioned_report_mutations_fail_closed(path: tuple[str | int, ...], value: object) -> None:
-    report = _completed_report()
+    locked, observations, report = _completed_context()
     _set_path(report, path, value)
     with pytest.raises(StudyValidationError):
-        validate_report(report)
+        validate_report(report, locked=locked, observations=observations)
+
+
+def test_contextual_report_rejects_mutually_consistent_metric_and_cell_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    locked, observations, report = _completed_context()
+    forged = copy.deepcopy(report)
+    cell = forged["categorical_statistics"]["cells"][0]
+    old_count = cell["observations"]
+    cell["human_count"] = "none" if cell["human_count"] != "none" else "multiple"
+    forged["metrics"]["count_accuracy"]["numerator"] = 0
+    forged["metrics"]["count_accuracy"]["denominator"] = old_count
+    forged["metrics"]["count_accuracy"]["value"] = 0.0
+    # Even granting an attacker a hypothetical internally consistent structure,
+    # authoritative recomputation still rejects bytes not derived from the sources.
+    monkeypatch.setattr(study, "_validate_report_structure", lambda report: None)
+    with pytest.raises(StudyValidationError, match="context|recomputed|report"):
+        validate_report(forged, locked=locked, observations=observations)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("session_outcomes", "user_exit"), 23),
+        (("groups", 0, "physical_item_id"), "forged-item"),
+        (("item_summaries", 0, "physical_item_id"), "forged-item"),
+    ],
+)
+def test_contextual_report_rejects_outcome_and_identity_mutations(
+    path: tuple[str | int, ...], value: object
+) -> None:
+    locked, observations, report = _completed_context()
+    _set_path(report, path, value)
+    with pytest.raises(StudyValidationError):
+        validate_report(report, locked=locked, observations=observations)
+
+
+@pytest.mark.parametrize("context_mutation", ["observation", "lock"])
+def test_contextual_report_rejects_mutated_authoritative_context(context_mutation: str) -> None:
+    locked, observations, report = _completed_context()
+    if context_mutation == "observation":
+        observations[0]["latency_ms"] += 1
+    else:
+        locked["manifest"]["sessions"][0]["subgroups"]["barcode_family"] = "code128_like"
+    with pytest.raises(StudyValidationError):
+        validate_report(report, locked=locked, observations=observations)
+
+
+def test_contextual_report_requires_exact_canonical_bytes() -> None:
+    locked, observations, report = _completed_context()
+    validate_report(copy.deepcopy(report), locked=locked, observations=copy.deepcopy(observations))
+    assert canonical_json_bytes(report) == canonical_json_bytes(
+        aggregate_live_report(locked, list(reversed(observations)))
+    )
+    forged = copy.deepcopy(report)
+    forged["latency_ms"]["maximum"] = forged["latency_ms"]["maximum"] + 0.001
+    with pytest.raises(StudyValidationError, match="canonical|recomputed|report"):
+        validate_report(forged, locked=locked, observations=observations)
+
+
+def test_report_subgroup_labels_are_locked_safe_tokens_and_pending_is_exact_empty() -> None:
+    locked, observations, report = _completed_context()
+    field = "barcode_family"
+    label = next(iter(report["subgroups"][field]))
+    for forged_label in ("unsafe label!", "a" * 65, "invented"):
+        forged = copy.deepcopy(report)
+        forged["subgroups"][field][forged_label] = forged["subgroups"][field].pop(label)
+        with pytest.raises(StudyValidationError):
+            validate_report(forged, locked=locked, observations=observations)
+    pending_observations = _accounting(locked)
+    pending = aggregate_live_report(locked, pending_observations)
+    assert pending["subgroups"] == {}
+    forged_pending = copy.deepcopy(pending)
+    forged_pending["subgroups"] = {"capture_path": {}}
+    with pytest.raises(StudyValidationError):
+        validate_report(forged_pending, locked=locked, observations=pending_observations)
+
+
+def test_report_cli_requires_and_uses_context(tmp_path: Path) -> None:
+    locked, observations, report = _completed_context()
+    report_path = tmp_path / "report.json"
+    locked_path = tmp_path / "locked.json"
+    observations_path = tmp_path / "observations.json"
+    report_path.write_bytes(canonical_json_bytes(report))
+    locked_path.write_bytes(canonical_json_bytes(locked))
+    observations_path.write_bytes(canonical_json_bytes(observations))
+    missing = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_b26_study.py",
+            "validate",
+            "--kind",
+            "report",
+            "--input",
+            str(report_path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert missing.returncode == 2
+    assert "--locked-manifest" in missing.stderr and "--observations" in missing.stderr
+    validated = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_b26_study.py",
+            "validate",
+            "--kind",
+            "report",
+            "--input",
+            str(report_path),
+            "--locked-manifest",
+            str(locked_path),
+            "--observations",
+            str(observations_path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert validated.returncode == 0, validated.stderr
+    assert validated.stdout == "valid report\n"
 
 
 def test_public_supplement_cli_preserves_omitted_report(tmp_path: Path) -> None:

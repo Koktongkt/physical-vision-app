@@ -219,9 +219,17 @@ def validate_manifest(manifest: object) -> None:
         or configuration["learned_detector"] is not False
     ):
         raise StudyValidationError("decode and learned detectors are prohibited")
-    if configuration["max_observations_per_session"] != 6:
+    if (
+        type(configuration["max_observations_per_session"]) is not int
+        or configuration["max_observations_per_session"] != 6
+    ):
         raise StudyValidationError("max observations must remain frozen at six")
-    if configuration["bootstrap_seed"] != 260826 or configuration["bootstrap_replicates"] != 10000:
+    if (
+        type(configuration["bootstrap_seed"]) is not int
+        or configuration["bootstrap_seed"] != 260826
+        or type(configuration["bootstrap_replicates"]) is not int
+        or configuration["bootstrap_replicates"] != 10000
+    ):
         raise StudyValidationError("confidence method configuration does not match protocol")
     ready_thresholds = _require_mapping(configuration["ready_thresholds"], "ready thresholds")
     _require_exact_keys(ready_thresholds, {"minimum_area_ratio"}, "ready thresholds")
@@ -306,7 +314,7 @@ def validate_manifest(manifest: object) -> None:
         challenge = session["assigned_challenge"]
         if type(challenge) is not str or challenge not in _CHALLENGES:
             raise StudyValidationError("assigned challenge is outside the frozen enum")
-        if session["max_observations"] != 6:
+        if type(session["max_observations"]) is not int or session["max_observations"] != 6:
             raise StudyValidationError("session max observations must remain six")
         if session["scene_truth"] not in {"none", "one", "multiple", "2d_only"}:
             raise StudyValidationError("unsupported scene_truth")
@@ -708,6 +716,13 @@ def aggregate_live_report(
                         "guidance transition must exactly follow an immediately "
                         "preceding guidance action"
                     )
+                if len(row["system"]["guidance_actions"]) == 1 and position + 1 == len(
+                    analyzed_rows
+                ):
+                    raise StudyValidationError(
+                        "guidance action requires an immediate successor with an "
+                        "evaluable transition"
+                    )
             if (
                 terminal["session_end"] == "max_observations"
                 and terminal["observation_index"] != sessions[session_id]["max_observations"]
@@ -931,7 +946,9 @@ def aggregate_live_report(
         )
         for transition in ("improving", "unchanged", "worsening", "not_evaluable")
     }
-    subgroup_accumulators: dict[str, dict[str, dict[str, Any]]] = {"capture_path": {}}
+    subgroup_accumulators: dict[str, dict[str, dict[str, Any]]] = (
+        {"capture_path": {}} if analyzed else {}
+    )
     for row in analyzed:
         session = sessions[row["session_id"]]
         subgroup = subgroup_accumulators["capture_path"].setdefault(
@@ -1049,7 +1066,7 @@ def aggregate_live_report(
             "onnx_detector_implemented": False,
         },
     }
-    validate_report(report)
+    _validate_report_structure(report)
     return report
 
 
@@ -1083,7 +1100,7 @@ def _validate_reason_counts(value: object, field: str, expected_total: int) -> N
         raise StudyValidationError(f"{field} total does not match its session denominator")
 
 
-def validate_report(report: object) -> None:
+def _validate_report_structure(report: object) -> None:
     document = _require_mapping(report, "report")
     _assert_content_free(document)
     _require_exact_keys(
@@ -1415,14 +1432,15 @@ def validate_report(report: object) -> None:
     }
     if analyzed:
         _require_exact_keys(subgroups, expected_subgroups, "subgroups")
-    elif subgroups != {"capture_path": {}}:
+    elif subgroups != {}:
         raise StudyValidationError("pending report subgroups must be empty")
     for field, buckets_value in subgroups.items():
         buckets = _require_mapping(buckets_value, f"subgroup {field}")
         field_total = 0
         for label, summary_value in buckets.items():
-            if type(label) is not str or not label:
-                raise StudyValidationError("subgroup labels must be non-empty strings")
+            _require_safe_token(label, "subgroup label")
+            if field != "capture_path" and label not in _SUBGROUP_ENUMS[field]:
+                raise StudyValidationError("subgroup label is outside its frozen enum")
             summary = _require_mapping(summary_value, "subgroup summary")
             _require_exact_keys(
                 summary, {"analyzed_observations", "physical_item_families"}, "subgroup summary"
@@ -1578,6 +1596,23 @@ def validate_report(report: object) -> None:
     }:
         raise StudyValidationError("report claim boundary is unsafe")
     canonical_json_bytes(document)
+
+
+def validate_report(
+    report: object,
+    *,
+    locked: object,
+    observations: list[object],
+) -> None:
+    """Validate a report against its authoritative lock and observations."""
+    _validate_report_structure(report)
+    if type(observations) is not list:
+        raise StudyValidationError("observations context must be a canonical JSON array")
+    recomputed = aggregate_live_report(locked, observations)
+    if canonical_json_bytes(report) != canonical_json_bytes(recomputed):
+        raise StudyValidationError(
+            "report does not exactly match the contextually recomputed report"
+        )
 
 
 def public_supplement_omitted_report() -> dict[str, Any]:

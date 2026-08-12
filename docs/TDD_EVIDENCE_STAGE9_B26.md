@@ -91,3 +91,18 @@ uvx --from uv==0.11.31 uv run pytest tests/python/test_b26_study.py -q
       status remains `protocol_only` / `live_pending` / `public_supplement_omitted`.
 
 Final repository-wide gates are recorded in the PR and task handoff after execution. This file never claims unexecuted gates passed.
+
+12. Contextual-validation final remediation
+    - RED: `uvx --from uv==0.11.31 uv run --frozen pytest tests/python/test_b26_study.py -q`
+    - Observed: `34 failed, 115 passed in 2.73s`. Representative failures proved float values
+      equal to frozen integers were accepted; terminal guided rows were accepted; the report API
+      accepted standalone documents and rejected contextual keyword arguments; report CLI accepted
+      no source context; and pending subgroup output was not exactly empty.
+    - GREEN: the focused suite passed after exact-int-before-equality checks, successor closure,
+      locked subgroup labels, exact pending `{}` subgroups, and contextual canonical recomputation.
+      The public API now requires `locked` and `observations`; aggregation calls only the private
+      structural validator, preventing recursion. Security tests cover metric, cell, subgroup,
+      outcome, item/session identity, lock, and observation mutations, including a mutually
+      consistent metric-plus-cell forgery that still fails authoritative recomputation.
+    - All observations remain synthetic contract fixtures. No live evidence was collected or
+      inferred; status remains `protocol_only` / `live_pending` / `public_supplement_omitted`.
