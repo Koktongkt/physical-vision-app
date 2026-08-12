@@ -37,6 +37,7 @@ testpaths = ["tests/python"]
 pythonpath = [
   "packages/contracts/python",
   "packages/policy/python",
+  "packages/study/python",
   "packages/vision/python",
   "services/api/python",
 ]
