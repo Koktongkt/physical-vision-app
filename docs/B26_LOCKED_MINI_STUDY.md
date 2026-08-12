@@ -18,7 +18,9 @@ This workflow implements the bounded evidence harness required by `docs/IMPLEMEN
 
 It also validates `b26-public-supplement-report-v1`. The current public decision is an omitted report because no audited source has verified artifact-specific image rights plus transitive provenance.
 
-Canonical JSON is ASCII UTF-8, sorted by key, compact separators, finite JSON numbers only, and one trailing LF. The manifest fingerprint is SHA-256 over exactly those canonical manifest bytes. A changed locked manifest, mismatched observation fingerprint, public/live track mixture, duplicate observation identity, unplanned reason, unaccounted planned session, or observation beyond the six-sample bound fails closed.
+Canonical JSON is ASCII UTF-8, sorted by key, compact separators, finite JSON numbers only, and one trailing LF. The manifest fingerprint is SHA-256 over exactly those canonical manifest bytes. A changed locked manifest, mismatched observation fingerprint, public/live track mixture, duplicate observation identity, unplanned reason, unaccounted planned session, or observation beyond the six-sample bound fails closed. An analyzed session uses contiguous indices from 1, `session_end: null` on intermediate rows, and exactly one non-null terminal row last; `max_observations` is valid only on row 6. Missing or excluded sessions use one accounting row at index 1.
+
+The observation action contract is exactly the non-`NONE` product `BarcodeGuidanceAction` enum: `camera_closer`, `camera_farther`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `camera_steady`, and `reduce_glare`. Each system decision has at most one action, so a displayed guidance decision has exactly one; absence remains measurable rather than being rejected based on the human label. Fictional `move_*` and `tilt` values fail closed.
 
 The live manifest requires these exact-value groups before lock:
 
@@ -62,7 +64,7 @@ Expected duration: 60–90 minutes. A human with the real desktop webcam and pho
 
 ## Report interpretation
 
-The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, missing reasons, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples.
+The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. The versioned report validator fails closed on every exact nested shape/type/range and on denominator, metric, confidence, confusion, latency, transition, subgroup, diagnostic, attempt, outcome, item, reason-total, group, status/evidence, and cross-field inconsistency.
 
 The public report remains separately titled `offline_public_supplement`, has zero denominators, and makes every live claim boundary false. Live and public denominators are never pooled.
 

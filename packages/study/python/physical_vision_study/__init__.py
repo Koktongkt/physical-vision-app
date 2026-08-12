@@ -8,6 +8,8 @@ import random
 import re
 from typing import Any
 
+from physical_vision_barcode import BarcodeGuidanceAction
+
 MANIFEST_SCHEMA_VERSION = "b26-study-manifest-v1"
 REPORT_SCHEMA_VERSION = "b26-study-report-v1"
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -334,17 +336,14 @@ def _validate_observation(
     if type(system["ready"]) is not bool or type(system["guidance_actions"]) is not list:
         raise StudyValidationError("system ready and guidance action types are invalid")
     allowed_actions = {
-        "move_closer",
-        "move_farther",
-        "move_up",
-        "move_down",
-        "tilt",
-        "reduce_glare",
+        action.value for action in BarcodeGuidanceAction if action is not BarcodeGuidanceAction.NONE
     }
-    if len(system["guidance_actions"]) > 4 or any(
+    if len(system["guidance_actions"]) > 1 or any(
         action not in allowed_actions for action in system["guidance_actions"]
     ):
         raise StudyValidationError("guidance actions are outside the content-free allowlist")
+    if system["ready"] and system["guidance_actions"]:
+        raise StudyValidationError("ready observation cannot include a guidance action")
     if document["guidance_transition"] not in {
         None,
         "improving",
@@ -356,6 +355,7 @@ def _validate_observation(
     if type(document["unsafe"]) is not bool:
         raise StudyValidationError("unsafe must be boolean")
     if document["session_end"] not in {
+        None,
         "ready_shutter",
         "user_exit",
         "unsupported",
@@ -467,6 +467,32 @@ def aggregate_live_report(
     analyzed = [row for row in rows if row["disposition"] == "analyzed"]
     missing = [row for row in rows if row["disposition"] == "missing"]
     excluded = [row for row in rows if row["disposition"] == "excluded"]
+    for session_id in sessions:
+        session_rows = [row for row in rows if row["session_id"] == session_id]
+        analyzed_rows = [row for row in session_rows if row["disposition"] == "analyzed"]
+        if analyzed_rows:
+            indices = [row["observation_index"] for row in analyzed_rows]
+            if indices != list(range(1, len(analyzed_rows) + 1)):
+                raise StudyValidationError(
+                    "analyzed session indices must be contiguous starting at 1"
+                )
+            terminal_rows = [row for row in analyzed_rows if row["session_end"] is not None]
+            if len(terminal_rows) != 1 or terminal_rows[0] is not analyzed_rows[-1]:
+                raise StudyValidationError(
+                    "analyzed session requires exactly one terminal row last"
+                )
+            terminal = terminal_rows[0]
+            if (
+                terminal["session_end"] == "max_observations"
+                and terminal["observation_index"] != sessions[session_id]["max_observations"]
+            ):
+                raise StudyValidationError(
+                    "max_observations terminal requires the sixth observation"
+                )
+        elif len(session_rows) != 1 or session_rows[0]["observation_index"] != 1:
+            raise StudyValidationError(
+                "missing or excluded session requires one accounting row at index 1"
+            )
     attempted_sessions = {row["session_id"] for row in analyzed}
     missing_sessions = {row["session_id"] for row in missing}
     excluded_sessions = {row["session_id"] for row in excluded}
@@ -610,6 +636,11 @@ def aggregate_live_report(
     reason_counts: dict[str, int] = {}
     for row in missing:
         reason_counts[row["reason_code"]] = reason_counts.get(row["reason_code"], 0) + 1
+    exclusion_reason_counts: dict[str, int] = {}
+    for row in excluded:
+        exclusion_reason_counts[row["reason_code"]] = (
+            exclusion_reason_counts.get(row["reason_code"], 0) + 1
+        )
     item_groups: dict[str, list[str]] = {}
     for session in manifest["sessions"]:
         item_groups.setdefault(session["physical_item_id"], []).append(session["session_id"])
@@ -625,7 +656,9 @@ def aggregate_live_report(
         "maximum": round(max(latency_values), 3) if latency_values else None,
     }
     transitions = {
-        transition: sum(row["guidance_transition"] == transition for row in analyzed)
+        transition: sum(
+            (row["guidance_transition"] or "not_evaluable") == transition for row in analyzed
+        )
         for transition in ("improving", "unchanged", "worsening", "not_evaluable")
     }
     subgroup_accumulators: dict[str, dict[str, dict[str, Any]]] = {"capture_path": {}}
@@ -733,7 +766,7 @@ def aggregate_live_report(
         "session_outcomes": dict(sorted(session_outcomes.items())),
         "item_summaries": item_summaries,
         "missing_reasons": dict(sorted(reason_counts.items())),
-        "exclusion_reasons": {},
+        "exclusion_reasons": dict(sorted(exclusion_reason_counts.items())),
         "groups": [
             {"physical_item_id": item_id, "session_ids": sorted(session_ids)}
             for item_id, session_ids in sorted(item_groups.items())
@@ -747,6 +780,29 @@ def aggregate_live_report(
     }
     validate_report(report)
     return report
+
+
+def _require_nonnegative_int(value: object, field: str) -> int:
+    if type(value) is not int or value < 0:
+        raise StudyValidationError(f"{field} must be a nonnegative integer")
+    return value
+
+
+def _require_finite_nonnegative_number(value: object, field: str) -> float:
+    if type(value) not in {int, float} or not math.isfinite(value) or value < 0:
+        raise StudyValidationError(f"{field} must be a finite nonnegative number")
+    return float(value)
+
+
+def _validate_reason_counts(value: object, field: str, expected_total: int) -> None:
+    reasons = _require_mapping(value, field)
+    total = 0
+    for reason, count in reasons.items():
+        if type(reason) is not str or not reason or type(count) is not int or count <= 0:
+            raise StudyValidationError(f"{field} entries must be non-empty positive counts")
+        total += count
+    if total != expected_total:
+        raise StudyValidationError(f"{field} total does not match its session denominator")
 
 
 def validate_report(report: object) -> None:
@@ -782,55 +838,330 @@ def validate_report(report: object) -> None:
     )
     if document["schema_version"] != REPORT_SCHEMA_VERSION:
         raise StudyValidationError("unsupported report schema_version")
+    if document["protocol_version"] != "B26-live-v1.0":
+        raise StudyValidationError("unsupported report protocol_version")
     if document["study_track"] != "live_physical":
         raise StudyValidationError("live report requires live_physical study_track")
-    if document["status"] not in {"protocol_only", "live_pending", "completed_locked_run"}:
-        raise StudyValidationError("unsupported live report status")
-    denominators = _require_mapping(document["denominators"], "report denominators")
-    _require_exact_keys(
-        denominators,
-        {
-            "planned_sessions",
-            "attempted_sessions",
-            "missing_sessions",
-            "excluded_sessions",
-            "analyzed_observations",
-            "physical_item_clusters",
-        },
-        "report denominators",
-    )
-    if document["status"] == "completed_locked_run" and denominators["analyzed_observations"] == 0:
-        raise StudyValidationError("completed status requires analyzed live observations")
-    if (
-        document["status"] in {"protocol_only", "live_pending"}
-        and denominators["analyzed_observations"]
-    ):
-        raise StudyValidationError("pending status cannot contain analyzed live observations")
-    for name, metric in _require_mapping(document["metrics"], "metrics").items():
-        metric = _require_mapping(metric, f"metric {name}")
-        _require_exact_keys(
-            metric,
-            {"numerator", "denominator", "value", "interval_95"},
-            f"metric {name}",
-        )
-        numerator = metric["numerator"]
-        denominator = metric["denominator"]
-        expected = round(numerator / denominator, 6) if denominator else None
-        if (
-            type(numerator) is not int
-            or type(denominator) is not int
-            or not 0 <= numerator <= denominator
-            or metric["value"] != expected
-        ):
-            raise StudyValidationError("metric numerator, denominator, and value are inconsistent")
-    if document["public_supplement_status"] not in {
-        "public_supplement_omitted",
-        "public_supplement_pending",
-        "public_supplement_completed",
-    }:
-        raise StudyValidationError("unsupported public supplement status")
+    if document["scope"] != "bounded-live-physical-mini-study-not-validation":
+        raise StudyValidationError("live report scope is invalid")
+    if document["public_supplement_status"] != "public_supplement_omitted":
+        raise StudyValidationError("live report must preserve public_supplement_omitted")
     if not re.fullmatch(r"[0-9a-f]{64}", document["manifest_fingerprint"]):
         raise StudyValidationError("report manifest fingerprint is invalid")
+
+    denominators = _require_mapping(document["denominators"], "report denominators")
+    denominator_keys = {
+        "planned_sessions",
+        "attempted_sessions",
+        "missing_sessions",
+        "excluded_sessions",
+        "analyzed_observations",
+        "physical_item_clusters",
+    }
+    _require_exact_keys(denominators, denominator_keys, "report denominators")
+    for key in denominator_keys:
+        _require_nonnegative_int(denominators[key], f"report denominators.{key}")
+    planned = denominators["planned_sessions"]
+    attempted = denominators["attempted_sessions"]
+    missing = denominators["missing_sessions"]
+    excluded = denominators["excluded_sessions"]
+    analyzed = denominators["analyzed_observations"]
+    clusters = denominators["physical_item_clusters"]
+    if attempted + missing + excluded != planned or attempted > analyzed or clusters > attempted:
+        raise StudyValidationError("report denominator sums are incoherent")
+    status = document["status"]
+    if status == "completed_locked_run":
+        if not attempted or not analyzed or not clusters:
+            raise StudyValidationError("completed status requires analyzed live evidence")
+    elif status in {"protocol_only", "live_pending"}:
+        if attempted or analyzed or clusters:
+            raise StudyValidationError("pending status cannot contain analyzed live evidence")
+    else:
+        raise StudyValidationError("unsupported live report status")
+
+    confidence = _require_mapping(document["confidence_method"], "confidence method")
+    _require_exact_keys(
+        confidence, {"name", "confidence", "seed", "replicates"}, "confidence method"
+    )
+    if (
+        confidence["name"] != "physical-item-cluster-bootstrap-percentile"
+        or type(confidence["confidence"]) is not float
+        or confidence["confidence"] != 0.95
+        or type(confidence["seed"]) is not int
+        or confidence["seed"] != 260826
+        or type(confidence["replicates"]) is not int
+        or not 1 <= confidence["replicates"] <= 10000
+    ):
+        raise StudyValidationError("confidence method metadata is invalid")
+    replicates = confidence["replicates"]
+
+    metric_names = {
+        "count_accuracy",
+        "false_ready",
+        "ready_coverage",
+        "ready_precision",
+        "required_abstention",
+        "guidance_eligibility",
+        "localization_success",
+        "exactly_one_action",
+        "guidance_improvement",
+        "unsafe_or_worsening",
+    }
+    metrics = _require_mapping(document["metrics"], "metrics")
+    _require_exact_keys(metrics, metric_names, "metrics")
+    for name in metric_names:
+        metric = _require_mapping(metrics[name], f"metric {name}")
+        _require_exact_keys(
+            metric, {"numerator", "denominator", "value", "interval_95"}, f"metric {name}"
+        )
+        numerator = _require_nonnegative_int(metric["numerator"], f"metric {name} numerator")
+        denominator = _require_nonnegative_int(metric["denominator"], f"metric {name} denominator")
+        expected = round(numerator / denominator, 6) if denominator else None
+        if numerator > denominator or denominator > analyzed or metric["value"] != expected:
+            raise StudyValidationError("metric numerator, denominator, and value are inconsistent")
+        interval = _require_mapping(metric["interval_95"], f"metric {name} interval")
+        _require_exact_keys(
+            interval, {"lower", "upper", "usable_replicates"}, f"metric {name} interval"
+        )
+        usable = _require_nonnegative_int(
+            interval["usable_replicates"], f"metric {name} usable replicates"
+        )
+        if usable > replicates:
+            raise StudyValidationError("metric usable replicates exceed configured replicates")
+        lower, upper = interval["lower"], interval["upper"]
+        if usable < math.ceil(replicates * 0.95):
+            if lower is not None or upper is not None:
+                raise StudyValidationError("unusable metric interval must be null")
+        elif (
+            type(lower) not in {int, float}
+            or type(upper) not in {int, float}
+            or not math.isfinite(lower)
+            or not math.isfinite(upper)
+            or not 0 <= lower <= upper <= 1
+        ):
+            raise StudyValidationError("usable metric interval is invalid")
+
+    count_classes = {"none", "one", "multiple", "unknown"}
+    confusion = _require_mapping(document["count_confusion"], "count confusion")
+    _require_exact_keys(confusion, count_classes, "count confusion")
+    confusion_total = 0
+    for human_class in count_classes:
+        row = _require_mapping(confusion[human_class], "count confusion row")
+        _require_exact_keys(row, count_classes, "count confusion row")
+        for value in row.values():
+            confusion_total += _require_nonnegative_int(value, "count confusion cell")
+    if confusion_total != analyzed:
+        raise StudyValidationError("count confusion total must equal analyzed observations")
+    evaluable_count = sum(sum(confusion[human].values()) for human in count_classes - {"unknown"})
+    count_correct = sum(confusion[label][label] for label in count_classes - {"unknown"})
+    if (
+        metrics["count_accuracy"]["denominator"] != evaluable_count
+        or metrics["count_accuracy"]["numerator"] != count_correct
+        or metrics["required_abstention"]["denominator"]
+        != sum(sum(confusion[human].values()) for human in {"none", "multiple", "unknown"})
+        or metrics["exactly_one_action"]["numerator"]
+        != metrics["exactly_one_action"]["denominator"]
+    ):
+        raise StudyValidationError("metric totals are incoherent with aggregate evidence")
+
+    latency = _require_mapping(document["latency_ms"], "latency")
+    _require_exact_keys(latency, {"count", "median", "p95", "maximum"}, "latency")
+    if _require_nonnegative_int(latency["count"], "latency count") != analyzed:
+        raise StudyValidationError("latency count must equal analyzed observations")
+    if analyzed:
+        median = _require_finite_nonnegative_number(latency["median"], "latency median")
+        p95 = _require_finite_nonnegative_number(latency["p95"], "latency p95")
+        maximum = _require_finite_nonnegative_number(latency["maximum"], "latency maximum")
+        if not median <= p95 <= maximum:
+            raise StudyValidationError("latency summaries are out of order")
+    elif any(latency[key] is not None for key in ("median", "p95", "maximum")):
+        raise StudyValidationError("empty latency summaries must be null")
+
+    transition_names = {"improving", "unchanged", "worsening", "not_evaluable"}
+    transitions = _require_mapping(document["guidance_transitions"], "guidance transitions")
+    _require_exact_keys(transitions, transition_names, "guidance transitions")
+    if (
+        sum(
+            _require_nonnegative_int(transitions[key], "guidance transition count")
+            for key in transition_names
+        )
+        != analyzed
+    ):
+        raise StudyValidationError("guidance transition counts must equal analyzed observations")
+    transition_evaluable = sum(transitions[key] for key in {"improving", "unchanged", "worsening"})
+    if (
+        metrics["guidance_improvement"]["denominator"] != transition_evaluable
+        or metrics["guidance_improvement"]["numerator"] != transitions["improving"]
+        or metrics["unsafe_or_worsening"]["denominator"] != transition_evaluable
+        or metrics["unsafe_or_worsening"]["numerator"] < transitions["worsening"]
+    ):
+        raise StudyValidationError("transition metrics are incoherent")
+
+    subgroups = _require_mapping(document["subgroups"], "subgroups")
+    expected_subgroups = {
+        "capture_path",
+        "barcode_family",
+        "scale_distance",
+        "angle_skew",
+        "blur_motion",
+        "crop_margin",
+        "glare_exposure",
+        "background_clutter",
+        "ordinary_appearance",
+    }
+    if analyzed:
+        _require_exact_keys(subgroups, expected_subgroups, "subgroups")
+    elif subgroups != {"capture_path": {}}:
+        raise StudyValidationError("pending report subgroups must be empty")
+    for field, buckets_value in subgroups.items():
+        buckets = _require_mapping(buckets_value, f"subgroup {field}")
+        field_total = 0
+        for label, summary_value in buckets.items():
+            if type(label) is not str or not label:
+                raise StudyValidationError("subgroup labels must be non-empty strings")
+            summary = _require_mapping(summary_value, "subgroup summary")
+            _require_exact_keys(
+                summary, {"analyzed_observations", "physical_item_families"}, "subgroup summary"
+            )
+            observations = _require_nonnegative_int(
+                summary["analyzed_observations"], "subgroup observations"
+            )
+            families = _require_nonnegative_int(
+                summary["physical_item_families"], "subgroup item families"
+            )
+            if not observations or not 1 <= families <= min(observations, clusters):
+                raise StudyValidationError("subgroup summary is outside report denominators")
+            field_total += observations
+        if field_total != analyzed:
+            raise StudyValidationError("each subgroup field must partition analyzed observations")
+
+    diagnostics = _require_mapping(document["diagnostics"], "diagnostics")
+    diagnostic_names = {"false_single_count", "unknown_prediction_count", "veto_violation_count"}
+    _require_exact_keys(diagnostics, diagnostic_names, "diagnostics")
+    for name in diagnostic_names:
+        if _require_nonnegative_int(diagnostics[name], f"diagnostic {name}") > analyzed:
+            raise StudyValidationError("diagnostic count exceeds analyzed observations")
+    if diagnostics["unknown_prediction_count"] != sum(
+        confusion[human]["unknown"] for human in count_classes
+    ):
+        raise StudyValidationError("unknown prediction diagnostic is incoherent")
+
+    attempts = _require_mapping(document["attempts_to_ready"], "attempts to ready")
+    _require_exact_keys(
+        attempts,
+        {"reached_ready_sessions", "values", "cumulative_sessions_by_attempt"},
+        "attempts to ready",
+    )
+    reached = _require_nonnegative_int(attempts["reached_ready_sessions"], "reached ready sessions")
+    values = attempts["values"]
+    if (
+        type(values) is not list
+        or len(values) != reached
+        or reached > attempted
+        or values != sorted(values)
+        or any(type(value) is not int or not 1 <= value <= 6 for value in values)
+    ):
+        raise StudyValidationError("attempts-to-ready values are invalid")
+    cumulative = _require_mapping(
+        attempts["cumulative_sessions_by_attempt"], "cumulative sessions by attempt"
+    )
+    _require_exact_keys(
+        cumulative, {str(index) for index in range(1, 7)}, "cumulative sessions by attempt"
+    )
+    if any(
+        cumulative[str(index)] != sum(value <= index for value in values) for index in range(1, 7)
+    ):
+        raise StudyValidationError("attempts-to-ready cumulative counts are incoherent")
+
+    outcome_names = {
+        "ready_shutter",
+        "user_exit",
+        "unsupported",
+        "input_error",
+        "resource_error",
+        "dependency_error",
+        "internal_error",
+        "max_observations",
+    }
+    outcomes = _require_mapping(document["session_outcomes"], "session outcomes")
+    if (
+        any(key not in outcome_names for key in outcomes)
+        or sum(
+            _require_nonnegative_int(value, "session outcome count") for value in outcomes.values()
+        )
+        != attempted
+    ):
+        raise StudyValidationError("session outcome counts are invalid")
+    if (
+        any(value == 0 for value in outcomes.values())
+        or outcomes.get("ready_shutter", 0) != reached
+    ):
+        raise StudyValidationError("session outcomes are incoherent with ready evidence")
+
+    groups = document["groups"]
+    summaries = document["item_summaries"]
+    if type(groups) is not list or type(summaries) is not list:
+        raise StudyValidationError("groups and item summaries must be arrays")
+    group_ids: set[str] = set()
+    session_ids: set[str] = set()
+    for group_value in groups:
+        group = _require_mapping(group_value, "group")
+        _require_exact_keys(group, {"physical_item_id", "session_ids"}, "group")
+        item_id, ids = group["physical_item_id"], group["session_ids"]
+        if (
+            type(item_id) is not str
+            or not item_id
+            or item_id in group_ids
+            or type(ids) is not list
+            or not ids
+            or ids != sorted(ids)
+            or any(type(session_id) is not str or not session_id for session_id in ids)
+            or session_ids.intersection(ids)
+        ):
+            raise StudyValidationError("groups contain invalid or duplicate identities")
+        group_ids.add(item_id)
+        session_ids.update(ids)
+    if len(session_ids) != planned:
+        raise StudyValidationError("group session total must equal planned sessions")
+    summary_ids: set[str] = set()
+    summary_analyzed = 0
+    summary_correct = 0
+    for summary_value in summaries:
+        summary = _require_mapping(summary_value, "item summary")
+        _require_exact_keys(
+            summary,
+            {
+                "physical_item_id",
+                "analyzed_observations",
+                "count_correct",
+                "predicted_ready",
+                "guidance_decisions",
+            },
+            "item summary",
+        )
+        item_id = summary["physical_item_id"]
+        if type(item_id) is not str or not item_id or item_id in summary_ids:
+            raise StudyValidationError("item summary identity is invalid or duplicated")
+        summary_ids.add(item_id)
+        observations = _require_nonnegative_int(
+            summary["analyzed_observations"], "item analyzed observations"
+        )
+        correct = _require_nonnegative_int(summary["count_correct"], "item count correct")
+        predicted = _require_nonnegative_int(summary["predicted_ready"], "item predicted ready")
+        guidance = _require_nonnegative_int(
+            summary["guidance_decisions"], "item guidance decisions"
+        )
+        if max(correct, predicted, guidance) > observations:
+            raise StudyValidationError("item summary count exceeds analyzed observations")
+        summary_analyzed += observations
+        summary_correct += correct
+    if summary_ids != group_ids or summary_analyzed != analyzed or summary_correct != count_correct:
+        raise StudyValidationError("item summaries are incoherent with groups or metrics")
+    if sum(summary["analyzed_observations"] > 0 for summary in summaries) != clusters:
+        raise StudyValidationError("item summaries do not match physical item clusters")
+
+    _validate_reason_counts(document["missing_reasons"], "missing reasons", missing)
+    _validate_reason_counts(document["exclusion_reasons"], "exclusion reasons", excluded)
     boundary = _require_mapping(document["claim_boundary"], "claim boundary")
     if boundary != {
         "live_and_public_denominators_separate": True,

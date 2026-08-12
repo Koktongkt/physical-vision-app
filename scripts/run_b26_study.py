@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "packages/study/python"))
+sys.path.insert(0, str(ROOT / "packages/vision/python"))
 
 from physical_vision_study import (  # noqa: E402
     aggregate_live_report,

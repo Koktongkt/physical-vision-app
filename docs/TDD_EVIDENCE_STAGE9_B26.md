@@ -36,11 +36,17 @@ No live physical observation was created or inferred. Status remains `protocol_o
    - RED: a `completed_locked_run` report with zero analyzed observations and an incomplete public claim boundary both validated.
    - GREEN: report status/denominator coherence, proportion consistency, and exact public claim boundaries are now enforced; all 15 focused tests passed.
 
+8. Semantic review remediation
+   - RED: `.venv/Scripts/python.exe -m pytest tests/python/test_b26_study.py -q`
+   - Observed: `40 failed, 16 passed`. Product action values such as `camera_closer` were rejected while fictional `move_*` / `tilt` values were accepted; multiple actions were permitted; intermediate rows could not be represented; session ordering/termination and exclusion-reason aggregation were not enforced; and adversarial nested report mutations reached an under-validating `validate_report`.
+   - GREEN: the same focused command produced `56 passed in 0.36s` after binding the action allowlist to the product `BarcodeGuidanceAction` non-`NONE` values, enforcing one-action and coherent contiguous terminal sequencing, retaining separate missing/exclusion reason totals, and validating exact nested report shapes/types/ranges and cross-field sums.
+   - The RED run and all GREEN work used synthetic contract fixtures only. No live observation was collected, inferred, or added, and no B26 validation claim is made.
+
 ## Current focused result
 
 ```text
 .venv/Scripts/python.exe -m pytest tests/python/test_b26_study.py -q
-15 passed
+55 passed in 0.79s
 ```
 
 Final repository-wide gates are recorded in the PR and task handoff after execution. This file never claims unexecuted gates passed.

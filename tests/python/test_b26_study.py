@@ -165,6 +165,7 @@ def _observation(
     guidance_actions: list[str],
     localization_success: bool | None,
     transition: str | None = None,
+    session_end: str | None = None,
 ) -> dict:
     return {
         "schema_version": "b26-study-observation-v1",
@@ -190,7 +191,9 @@ def _observation(
         "guidance_transition": transition,
         "unsafe": False,
         "latency_ms": 20.0 + index,
-        "session_end": "ready_shutter" if predicted_ready else "max_observations",
+        "session_end": session_end
+        if session_end is not None
+        else ("ready_shutter" if predicted_ready else "user_exit"),
     }
 
 
@@ -214,7 +217,7 @@ def test_live_aggregation_is_deterministic_grouped_and_reports_full_denominators
             predicted_count="one",
             human_ready="not_ready",
             predicted_ready=False,
-            guidance_actions=["move_closer"],
+            guidance_actions=["camera_closer"],
             localization_success=True,
             transition="improving",
         ),
@@ -278,7 +281,7 @@ def test_live_aggregation_is_deterministic_grouped_and_reports_full_denominators
         "values": [1],
         "cumulative_sessions_by_attempt": {"1": 1, "2": 1, "3": 1, "4": 1, "5": 1, "6": 1},
     }
-    assert first["session_outcomes"] == {"max_observations": 1, "ready_shutter": 1}
+    assert first["session_outcomes"] == {"ready_shutter": 1, "user_exit": 1}
     assert first["count_confusion"] == {
         "none": {"none": 0, "one": 1, "multiple": 0, "unknown": 0},
         "one": {"none": 0, "one": 1, "multiple": 0, "unknown": 0},
@@ -290,7 +293,7 @@ def test_live_aggregation_is_deterministic_grouped_and_reports_full_denominators
         "improving": 1,
         "unchanged": 0,
         "worsening": 0,
-        "not_evaluable": 0,
+        "not_evaluable": 1,
     }
     assert first["subgroups"]["capture_path"] == {
         "desktop-webcam": {"analyzed_observations": 2, "physical_item_families": 2}
@@ -497,3 +500,189 @@ def test_observation_privacy_canary_is_rejected_without_echo() -> None:
 
     assert "C:/Users/Private/frame.jpg" not in str(raised.value)
     assert str(raised.value) == "document contains prohibited sensitive content"
+
+
+def _locked() -> dict:
+    return lock_manifest(_manifest(), locked_at="2026-08-12T20:00:00Z", signer_id="operator-a")
+
+
+def _analyzed_pair(locked: dict) -> list[dict]:
+    first = _observation(
+        locked,
+        session_id="session-001",
+        index=1,
+        human_count="one",
+        predicted_count="one",
+        human_ready="not_ready",
+        predicted_ready=False,
+        guidance_actions=["camera_closer"],
+        localization_success=True,
+        transition="not_evaluable",
+        session_end=None,
+    )
+    first["session_end"] = None
+    second = _observation(
+        locked,
+        session_id="session-001",
+        index=2,
+        human_count="one",
+        predicted_count="one",
+        human_ready="ready",
+        predicted_ready=True,
+        guidance_actions=[],
+        localization_success=True,
+        transition="improving",
+        session_end="ready_shutter",
+    )
+    missing = {
+        "schema_version": "b26-study-observation-v1",
+        "manifest_fingerprint": locked["lock"]["fingerprint"],
+        "study_track": "live_physical",
+        "run_kind": "locked",
+        "session_id": "session-002",
+        "observation_index": 1,
+        "disposition": "missing",
+        "reason_code": "capture_path_unavailable",
+    }
+    return [first, second, missing]
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "camera_closer",
+        "camera_farther",
+        "camera_left",
+        "camera_right",
+        "camera_up",
+        "camera_down",
+        "camera_steady",
+        "reduce_glare",
+    ],
+)
+def test_observation_accepts_each_product_guidance_action(action: str) -> None:
+    locked = _locked()
+    rows = _analyzed_pair(locked)
+    rows[0]["system"]["guidance_actions"] = [action]
+    aggregate_live_report(locked, rows, bootstrap_replicates=20)
+
+
+@pytest.mark.parametrize("actions", [["move_closer"], ["tilt"], ["camera_left", "camera_up"]])
+def test_observation_rejects_fictional_or_multiple_guidance_actions(actions: list[str]) -> None:
+    locked = _locked()
+    rows = _analyzed_pair(locked)
+    rows[0]["system"]["guidance_actions"] = actions
+    with pytest.raises(StudyValidationError, match="guidance"):
+        aggregate_live_report(locked, rows, bootstrap_replicates=20)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "starts_at_two",
+        "gap",
+        "missing_terminal",
+        "terminal_not_last",
+        "row_after_terminal",
+        "early_max_observations",
+    ],
+)
+def test_analyzed_session_sequence_fails_closed(mutation: str) -> None:
+    locked = _locked()
+    rows = _analyzed_pair(locked)
+    if mutation == "starts_at_two":
+        rows[0]["observation_index"] = 2
+        rows[1]["observation_index"] = 3
+    elif mutation == "gap":
+        rows[1]["observation_index"] = 3
+    elif mutation == "missing_terminal":
+        rows[1]["session_end"] = None
+    elif mutation == "terminal_not_last":
+        rows[0]["session_end"] = "user_exit"
+    elif mutation == "row_after_terminal":
+        rows[0]["session_end"] = "user_exit"
+        rows[1]["session_end"] = "ready_shutter"
+    elif mutation == "early_max_observations":
+        rows[1]["session_end"] = "max_observations"
+    with pytest.raises(StudyValidationError, match="session|terminal|contiguous|max_observations"):
+        aggregate_live_report(locked, rows, bootstrap_replicates=20)
+
+
+def test_exclusion_reasons_are_aggregated_separately() -> None:
+    locked = _locked()
+    rows = [_analyzed_pair(locked)[0]]
+    rows[0]["session_end"] = "user_exit"
+    rows.append(
+        {
+            "schema_version": "b26-study-observation-v1",
+            "manifest_fingerprint": locked["lock"]["fingerprint"],
+            "study_track": "live_physical",
+            "run_kind": "locked",
+            "session_id": "session-002",
+            "observation_index": 1,
+            "disposition": "excluded",
+            "reason_code": "operator_exit",
+        }
+    )
+    report = aggregate_live_report(locked, rows, bootstrap_replicates=20)
+    assert report["missing_reasons"] == {}
+    assert report["exclusion_reasons"] == {"operator_exit": 1}
+
+
+def _completed_report() -> dict:
+    locked = _locked()
+    return aggregate_live_report(locked, _analyzed_pair(locked), bootstrap_replicates=20)
+
+
+def _set_path(document: dict, path: tuple[str | int, ...], value: object) -> None:
+    target: object = document
+    for part in path[:-1]:
+        target = target[part]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("protocol_version",), "wrong"),
+        (("scope",), "validation"),
+        (("denominators", "planned_sessions"), -1),
+        (("denominators", "attempted_sessions"), 3),
+        (("confidence_method", "confidence"), 1.5),
+        (("confidence_method", "seed"), True),
+        (("metrics", "count_accuracy", "interval_95", "lower"), -0.1),
+        (("metrics", "count_accuracy", "interval_95", "usable_replicates"), 21),
+        (("count_confusion", "one", "one"), 99),
+        (("latency_ms", "count"), 99),
+        (("latency_ms", "median"), -1.0),
+        (("guidance_transitions", "improving"), 99),
+        (("subgroups", "capture_path", "desktop-webcam", "analyzed_observations"), 99),
+        (("diagnostics", "false_single_count"), 99),
+        (("attempts_to_ready", "reached_ready_sessions"), 99),
+        (("attempts_to_ready", "values"), [0]),
+        (("session_outcomes", "ready_shutter"), 99),
+        (("item_summaries", 0, "analyzed_observations"), 99),
+        (("missing_reasons", "capture_path_unavailable"), 2),
+        (("exclusion_reasons", "operator_exit"), 1),
+        (("groups", 0, "session_ids"), []),
+    ],
+)
+def test_versioned_report_adversarial_mutations_fail_closed(
+    path: tuple[str | int, ...], value: object
+) -> None:
+    report = _completed_report()
+    _set_path(report, path, value)
+    with pytest.raises(StudyValidationError):
+        validate_report(report)
+
+
+def test_versioned_report_rejects_nested_extra_or_wrong_type() -> None:
+    report = _completed_report()
+    report["latency_ms"]["extra"] = 0
+    with pytest.raises(StudyValidationError):
+        validate_report(report)
+
+    report = _completed_report()
+    report["groups"] = "not-a-list"
+    with pytest.raises(StudyValidationError):
+        validate_report(report)
