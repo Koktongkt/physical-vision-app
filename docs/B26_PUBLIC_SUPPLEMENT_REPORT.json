@@ -1,0 +1,24 @@
+{
+  "claim_boundary": {
+    "camera_lifecycle": false,
+    "live_robustness": false,
+    "payload_decode": false,
+    "physical_guidance": false,
+    "ready_light": false
+  },
+  "dataset": null,
+  "denominators": {
+    "eligible_images": 0,
+    "excluded_images": 0,
+    "missing_images": 0
+  },
+  "omission": {
+    "candidates_audited": 4,
+    "reason_code": "dataset_rights_and_provenance_unverified"
+  },
+  "protocol_version": "B26-live-v1.0",
+  "schema_version": "b26-public-supplement-report-v1",
+  "scope": "offline-detector-only-no-live-claims",
+  "status": "public_supplement_omitted",
+  "study_track": "offline_public_supplement"
+}
