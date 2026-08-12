@@ -15,6 +15,7 @@ from physical_vision_study import (  # noqa: E402
     lock_manifest,
     public_supplement_omitted_report,
     validate_manifest,
+    validate_public_supplement_report,
     validate_report,
     verify_manifest_lock,
 )
@@ -38,7 +39,9 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
 
     validate = commands.add_parser("validate")
-    validate.add_argument("--kind", choices=("manifest", "lock", "report"), required=True)
+    validate.add_argument(
+        "--kind", choices=("manifest", "lock", "report", "public-report"), required=True
+    )
     validate.add_argument("--input", type=Path, required=True)
 
     lock = commands.add_parser("lock-manifest")
@@ -63,6 +66,7 @@ def main() -> None:
             "manifest": validate_manifest,
             "lock": verify_manifest_lock,
             "report": validate_report,
+            "public-report": validate_public_supplement_report,
         }
         validators[arguments.kind](document)
         print(f"valid {arguments.kind}")

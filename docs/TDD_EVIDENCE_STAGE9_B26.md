@@ -44,9 +44,31 @@ No live physical observation was created or inferred. Status remains `protocol_o
 
 ## Current focused result
 
+9. Final bounded protocol remediation
+   - RED: `.venv/Scripts/python.exe -m pytest tests/python/test_b26_study.py -q`
+   - Observed: `62 failed, 17 passed`. Representative failures showed the old implementation did
+     not accept the exact 24-session fixture, accepted insufficient lock metadata and public-report
+     validation, exposed the public bootstrap override, and did not enforce full-run completion.
+   - GREEN after the minimal manifest/lock/aggregation/report/CLI changes: `79 passed in 1.10s`.
+   - Tests monkeypatch the private bootstrap sampler only; the public aggregation API and emitted
+     report remain locked to seed `260826` and 10,000 replicates. Fixtures are synthetic contract
+     data only; no live evidence or validation claim was created.
+
+10. Observation coherence and report metric cross-binding
+    - RED: `uvx --from uv==0.11.31 uv run pytest tests/python/test_b26_study.py -q`
+    - Observed: `18 failed, 86 passed in 1.90s`. The failures showed that target-support and
+      localization types/coherence, nonnegative latency, human/system ready-guidance-veto
+      relationships, and unsafe `not_evaluable` accounting were not enforced. The report had no
+      independent evidence surface with which to reject forged derived metrics.
+    - GREEN: the same focused command produced `104 passed in 1.57s` after minimal observation
+      validation, safety eligibility accounting, and exact report-v2 `metric_evidence` counters
+      cross-bound to every metric numerator and denominator. Adversarial tests mutate every metric
+      and every evidence counter.
+    - This RED/GREEN used synthetic contract fixtures only and creates no live or public evidence.
+
 ```text
-.venv/Scripts/python.exe -m pytest tests/python/test_b26_study.py -q
-55 passed in 0.79s
+uvx --from uv==0.11.31 uv run pytest tests/python/test_b26_study.py -q
+104 passed in 1.57s
 ```
 
 Final repository-wide gates are recorded in the PR and task handoff after execution. This file never claims unexecuted gates passed.

@@ -14,13 +14,22 @@ This workflow implements the bounded evidence harness required by `docs/IMPLEMEN
 
 - `b26-study-manifest-v1`: exact versions, frozen configuration, capture paths, preregistered reasons, and ordered session plan;
 - `b26-study-manifest-lock-v1`: canonical SHA-256 fingerprint plus UTC lock time and pseudonymous signer; and
-- `b26-study-report-v1`: deterministic content-free aggregates with explicit status and claim boundaries.
+- `b26-study-report-v2`: deterministic content-free aggregates with explicit status, claim
+  boundaries, and sufficient content-free metric evidence counters.
 
 It also validates `b26-public-supplement-report-v1`. The current public decision is an omitted report because no audited source has verified artifact-specific image rights plus transitive provenance.
 
 Canonical JSON is ASCII UTF-8, sorted by key, compact separators, finite JSON numbers only, and one trailing LF. The manifest fingerprint is SHA-256 over exactly those canonical manifest bytes. A changed locked manifest, mismatched observation fingerprint, public/live track mixture, duplicate observation identity, unplanned reason, unaccounted planned session, or observation beyond the six-sample bound fails closed. An analyzed session uses contiguous indices from 1, `session_end: null` on intermediate rows, and exactly one non-null terminal row last; `max_observations` is valid only on row 6. Missing or excluded sessions use one accounting row at index 1.
 
 The observation action contract is exactly the non-`NONE` product `BarcodeGuidanceAction` enum: `camera_closer`, `camera_farther`, `camera_left`, `camera_right`, `camera_up`, `camera_down`, `camera_steady`, and `reduce_glare`. Each system decision has at most one action, so a displayed guidance decision has exactly one; absence remains measurable rather than being rejected based on the human label. Fictional `move_*` and `tilt` values fail closed.
+
+Observation labels and decisions are coherent, not merely shape-valid. Human `target_support` is the
+exact `supported_1d` / `hard_negative` / `unsupported_2d` enum and must agree with human count;
+human ready cannot coexist with guidance eligibility. System readiness and guidance require count
+`one` and successful localization; non-`one` decisions require null localization and no readiness or
+guidance. Localization is exact boolean/null. Latency is finite and nonnegative with booleans
+rejected. An unsafe row is always included in `unsafe_or_worsening`, including when its transition is
+`not_evaluable`.
 
 The live manifest requires these exact-value groups before lock:
 
@@ -29,8 +38,15 @@ The live manifest requires these exact-value groups before lock:
 - payload-decode-off and learned-detector-off assertions;
 - frozen ready thresholds, measurement tolerances, resource limits, seed `260826`, 10,000 bootstrap replicates, and six observations per session;
 - pseudonymous operator/labeler IDs;
-- device, camera, resolution, and sample rate for each capture path; and
-- ordered session, physical-item/control-family, truth/support, challenge, appearance, and capture-path assignments.
+- exactly two capture paths with explicit `desktop_webcam` and `phone_camera` roles, bounded
+  pseudonymous device/camera tokens, positive two-integer resolution, and bounded sample rate; and
+- exactly 24 ordered sessions: eight distinct supported physical 1D items once per path plus the
+  four coherent controls per path (`ordinary_zero_code`, `stripe_text_hard_negative`,
+  `two_visible_supported_1d`, and `qr_only`). `control_kind` makes this partition explicit.
+
+The allowed-reason list is the exact bounded protocol enum (maximum six entries), and subgroup
+labels are safe bounded tokens drawn from frozen enums. Lock metadata uses a valid-calendar strict
+RFC3339 UTC timestamp with literal `Z` and a bounded content-free pseudonymous signer.
 
 IDs must be non-content identifiers. Validators reject path/URL/image-byte/payload-like fields, 12–14 digit payload-like values, Host/Origin material, data-image values, and exception-like text with content-free errors.
 
@@ -44,6 +60,7 @@ Run commands from the repository root with the pinned Python environment:
 .venv/Scripts/python.exe scripts/run_b26_study.py validate --kind lock --input <locked.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py aggregate-live --locked-manifest <locked.json> --observations <observations.json> --output <report.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py validate --kind report --input <report.json>
+.venv/Scripts/python.exe scripts/run_b26_study.py validate --kind public-report --input <public-report.json>
 .venv/Scripts/python.exe scripts/run_b26_study.py public-supplement --decision omitted --output docs/B26_PUBLIC_SUPPLEMENT_REPORT.json
 ```
 
@@ -60,11 +77,15 @@ Expected duration: 60–90 minutes. A human with the real desktop webcam and pho
 5. Follow rows in locked order. Commit the human count/support/ready reference before revealing the system decision. For a displayed action, follow that one action once and label only the next bounded observation. Never choose among multiple actions or keep trying until success.
 6. End each session at ready plus human shutter, user exit, terminal outcome, or six observations. Stop the whole run at 24 attempted sessions, 90 minutes, a privacy/safety concern, repeated camera/app failure preventing the next row, or a frozen resource guard.
 7. Give every planned session analyzed, missing, or excluded accounting using only preregistered reasons. Return only the locked fingerprint, canonical content-free observation JSON, deviation log, and validated aggregate report. Never return raw images, payloads, private paths, Host/Origin values, or exception text.
-8. Run aggregation twice from the same locked inputs and byte-compare the outputs. A run with no analyzed live observation remains `live_pending`; it cannot appear as completed.
+8. Run aggregation twice from the same locked inputs and byte-compare the outputs. Production
+   aggregation always uses seed `260826` and 10,000 bootstrap replicates. A run is
+   `completed_locked_run` only with all 24 sessions attempted/analyzed, no missing/excluded rows,
+   and complete path/item/control coverage. Coherent all-accounted zero-evidence runs remain
+   `live_pending`; partial analyzed evidence fails closed.
 
 ## Report interpretation
 
-The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. The versioned report validator fails closed on every exact nested shape/type/range and on denominator, metric, confidence, confusion, latency, transition, subgroup, diagnostic, attempt, outcome, item, reason-total, group, status/evidence, and cross-field inconsistency.
+The aggregator reports planned/attempted/missing/excluded sessions, analyzed observations, physical-item clusters, count confusion, count/localization/ready/guidance proportions, cluster-bootstrap intervals, transition categories, latency nearest-rank summaries, separate missing and exclusion reason counts, and capture-path subgroup counts. Sequential observations are nested under physical-item groups; the report does not describe adjacent frames as independent samples. Report v2 adds compact, content-free `metric_evidence` counters sufficient to bind every metric numerator and denominator independently of the supplied metric object. The versioned report validator fails closed on every exact nested shape/type/range and on denominator, metric/evidence, confidence, confusion, latency, transition, subgroup, diagnostic, attempt, outcome, item, reason-total, group, status/evidence, and cross-field inconsistency.
 
 The public report remains separately titled `offline_public_supplement`, has zero denominators, and makes every live claim boundary false. Live and public denominators are never pooled.
 

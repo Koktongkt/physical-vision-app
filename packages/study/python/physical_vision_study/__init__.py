@@ -6,13 +6,34 @@ import json
 import math
 import random
 import re
+from datetime import datetime
 from typing import Any
 
 from physical_vision_barcode import BarcodeGuidanceAction
 
 MANIFEST_SCHEMA_VERSION = "b26-study-manifest-v1"
-REPORT_SCHEMA_VERSION = "b26-study-report-v1"
+REPORT_SCHEMA_VERSION = "b26-study-report-v2"
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+_SAFE_TOKEN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
+_RFC3339_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
+_REASON_CODES = ("capture_path_unavailable", "operator_exit")
+_CONTROL_DESIGN = {
+    "ordinary_zero_code": ("none", "hard_negative"),
+    "stripe_text_hard_negative": ("none", "hard_negative"),
+    "two_visible_supported_1d": ("multiple", "supported_1d"),
+    "qr_only": ("2d_only", "unsupported_2d"),
+}
+_BOOTSTRAP_WORK_REPLICATES = 10000
+_SUBGROUP_ENUMS = {
+    "barcode_family": {"ean_upc_like", "code128_like", "unknown"},
+    "scale_distance": {"2_to_8_percent", "unknown"},
+    "angle_skew": {"nominal", "severe_unknown", "unknown"},
+    "blur_motion": {"none", "unknown"},
+    "crop_margin": {"clear", "unknown"},
+    "glare_exposure": {"none", "unknown"},
+    "background_clutter": {"plain", "cluttered", "cluttered_stripe_text"},
+    "ordinary_appearance": {"matte", "other_unknown"},
+}
 _SENSITIVE_VALUE_PATTERN = re.compile(
     r"(?:https?://|data:image/|(?:[A-Za-z]:[\\/]|/Users/|/home/)|"
     r"(?:RuntimeError|ValueError|Exception|Traceback):)",
@@ -73,6 +94,33 @@ def _assert_content_free(value: object) -> None:
         raise StudyValidationError("document contains prohibited sensitive content")
 
 
+def _require_safe_token(value: object, field: str) -> str:
+    if type(value) is not str or not _SAFE_TOKEN.fullmatch(value):
+        raise StudyValidationError(f"{field} must be a safe bounded pseudonymous token")
+    return value
+
+
+def _validate_lock_metadata(value: object) -> dict[str, Any]:
+    try:
+        lock = _require_mapping(value, "lock")
+        _assert_content_free(lock)
+        _require_exact_keys(lock, {"algorithm", "fingerprint", "locked_at", "signer_id"}, "lock")
+        locked_at = lock.get("locked_at")
+        if type(locked_at) is not str or not _RFC3339_UTC.fullmatch(locked_at):
+            raise ValueError
+        datetime.fromisoformat(locked_at[:-1] + "+00:00")
+        _require_safe_token(lock.get("signer_id"), "signer_id")
+        if lock.get("algorithm") != "sha256":
+            raise ValueError
+        if type(lock.get("fingerprint")) is not str or not re.fullmatch(
+            r"[0-9a-f]{64}", lock["fingerprint"]
+        ):
+            raise ValueError
+    except (StudyValidationError, TypeError, ValueError) as error:
+        raise StudyValidationError("lock metadata is invalid") from error
+    return lock
+
+
 def validate_manifest(manifest: object) -> None:
     document = _require_mapping(manifest, "manifest")
     _assert_content_free(document)
@@ -129,8 +177,8 @@ def validate_manifest(manifest: object) -> None:
 
     operator = _require_mapping(document["operator"], "operator")
     _require_exact_keys(operator, {"operator_id", "labeler_id"}, "operator")
-    if not all(operator.values()):
-        raise StudyValidationError("operator pseudonymous IDs must be non-empty")
+    for value in operator.values():
+        _require_safe_token(value, "operator pseudonymous ID")
 
     configuration = _require_mapping(document["configuration"], "configuration")
     required_configuration = {
@@ -157,24 +205,46 @@ def validate_manifest(manifest: object) -> None:
     capture_paths = document["capture_paths"]
     sessions = document["sessions"]
     reasons = document["allowed_reason_codes"]
-    if type(capture_paths) is not list or not capture_paths:
-        raise StudyValidationError("capture_paths must be non-empty")
-    if type(sessions) is not list or not sessions:
-        raise StudyValidationError("sessions must be non-empty")
-    if type(reasons) is not list or not reasons or len(reasons) != len(set(reasons)):
-        raise StudyValidationError("allowed_reason_codes must be unique and non-empty")
+    if type(capture_paths) is not list or len(capture_paths) != 2:
+        raise StudyValidationError("exactly two capture paths are required")
+    if type(sessions) is not list or len(sessions) != 24:
+        raise StudyValidationError("exactly 24 sessions are required")
+    if type(reasons) is not list or reasons != list(_REASON_CODES):
+        raise StudyValidationError(
+            "allowed reason codes must equal the exact bounded protocol enum"
+        )
 
     capture_ids = set()
     for capture in capture_paths:
         capture = _require_mapping(capture, "capture path")
         _require_exact_keys(
             capture,
-            {"capture_path_id", "device", "camera", "resolution", "sample_rate_hz"},
+            {"capture_path_id", "path_role", "device", "camera", "resolution", "sample_rate_hz"},
             "capture path",
         )
+        for field in ("capture_path_id", "device", "camera"):
+            _require_safe_token(capture[field], f"capture path {field} safe token")
+        resolution = capture["resolution"]
+        if (
+            type(resolution) is not list
+            or len(resolution) != 2
+            or any(type(value) is not int or not 1 <= value <= 16384 for value in resolution)
+        ):
+            raise StudyValidationError(
+                "capture path resolution must contain two positive bounded integers"
+            )
+        sample_rate = capture["sample_rate_hz"]
+        if (
+            type(sample_rate) not in {int, float}
+            or not math.isfinite(sample_rate)
+            or not 0 < sample_rate <= 120
+        ):
+            raise StudyValidationError("capture path sample rate must be positive and bounded")
         capture_ids.add(capture["capture_path_id"])
     if len(capture_ids) != len(capture_paths):
         raise StudyValidationError("capture_path_id values must be unique")
+    if {capture["path_role"] for capture in capture_paths} != {"desktop_webcam", "phone_camera"}:
+        raise StudyValidationError("capture path roles must be desktop_webcam and phone_camera")
 
     orders = []
     session_ids = set()
@@ -191,6 +261,7 @@ def validate_manifest(manifest: object) -> None:
                 "capture_path_id",
                 "scene_truth",
                 "target_support",
+                "control_kind",
                 "assigned_challenge",
                 "subgroups",
                 "max_observations",
@@ -199,10 +270,14 @@ def validate_manifest(manifest: object) -> None:
         )
         if session["capture_path_id"] not in capture_ids:
             raise StudyValidationError("session references an unknown capture path")
+        for field in ("session_id", "physical_item_id", "assigned_challenge"):
+            _require_safe_token(session[field], f"session {field}")
         if session["max_observations"] != 6:
             raise StudyValidationError("session max observations must remain six")
         if session["scene_truth"] not in {"none", "one", "multiple", "2d_only"}:
             raise StudyValidationError("unsupported scene_truth")
+        if session["target_support"] not in {"supported_1d", "hard_negative", "unsupported_2d"}:
+            raise StudyValidationError("unsupported target_support")
         subgroup_fields = {
             "barcode_family",
             "scale_distance",
@@ -215,22 +290,57 @@ def validate_manifest(manifest: object) -> None:
         }
         subgroups = _require_mapping(session["subgroups"], "session subgroups")
         _require_exact_keys(subgroups, subgroup_fields, "session subgroups")
-        if not all(subgroups.values()):
-            raise StudyValidationError("session subgroups must be frozen and non-empty")
+        for field, value in subgroups.items():
+            _require_safe_token(value, "session subgroup")
+            if value not in _SUBGROUP_ENUMS[field]:
+                raise StudyValidationError("session subgroup is outside its frozen enum")
         orders.append(session["order"])
         session_ids.add(session["session_id"])
     if orders != list(range(1, len(sessions) + 1)) or len(session_ids) != len(sessions):
         raise StudyValidationError("sessions require unique IDs in contiguous locked order")
+
+    supported = [session for session in sessions if session["control_kind"] == "supported_single"]
+    if len(supported) != 16 or any(
+        session["scene_truth"] != "one" or session["target_support"] != "supported_1d"
+        for session in supported
+    ):
+        raise StudyValidationError(
+            "frozen item/control design requires 16 coherent supported single-target "
+            "sessions and four controls per path"
+        )
+    item_ids = {session["physical_item_id"] for session in supported}
+    if len(item_ids) != 8:
+        raise StudyValidationError(
+            "frozen item design requires exactly eight distinct physical item IDs"
+        )
+    for item_id in item_ids:
+        paths = [
+            session["capture_path_id"]
+            for session in supported
+            if session["physical_item_id"] == item_id
+        ]
+        if len(paths) != 2 or set(paths) != capture_ids:
+            raise StudyValidationError("each supported physical item must appear once per path")
+    controls = [session for session in sessions if session["control_kind"] != "supported_single"]
+    for path_id in capture_ids:
+        path_controls = [session for session in controls if session["capture_path_id"] == path_id]
+        if len(path_controls) != 4 or {session["control_kind"] for session in path_controls} != set(
+            _CONTROL_DESIGN
+        ):
+            raise StudyValidationError("exactly four frozen controls are required per capture path")
+        for session in path_controls:
+            if (session["scene_truth"], session["target_support"]) != _CONTROL_DESIGN[
+                session["control_kind"]
+            ]:
+                raise StudyValidationError("control scene and target_support coherence is invalid")
 
     canonical_json_bytes(document)
 
 
 def lock_manifest(manifest: object, *, locked_at: str, signer_id: str) -> dict[str, Any]:
     validate_manifest(manifest)
-    if not locked_at.endswith("Z") or not signer_id:
-        raise StudyValidationError("lock metadata must identify UTC lock time and signer")
     frozen = copy.deepcopy(manifest)
-    return {
+    locked = {
         "schema_version": "b26-study-manifest-lock-v1",
         "manifest": frozen,
         "lock": {
@@ -240,6 +350,8 @@ def lock_manifest(manifest: object, *, locked_at: str, signer_id: str) -> dict[s
             "signer_id": signer_id,
         },
     }
+    _validate_lock_metadata(locked["lock"])
+    return locked
 
 
 def verify_manifest_lock(locked: object) -> None:
@@ -248,8 +360,7 @@ def verify_manifest_lock(locked: object) -> None:
     if document["schema_version"] != "b26-study-manifest-lock-v1":
         raise StudyValidationError("unsupported lock schema_version")
     validate_manifest(document["manifest"])
-    lock = _require_mapping(document["lock"], "lock")
-    _require_exact_keys(lock, {"algorithm", "fingerprint", "locked_at", "signer_id"}, "lock")
+    lock = _validate_lock_metadata(document["lock"])
     actual = hashlib.sha256(canonical_json_bytes(document["manifest"])).hexdigest()
     if lock["algorithm"] != "sha256" or lock["fingerprint"] != actual:
         raise StudyValidationError("manifest fingerprint does not match locked content")
@@ -327,12 +438,35 @@ def _validate_observation(
         "system decision",
     )
     counts = {"none", "one", "multiple", "unknown"}
+    if type(human["count"]) is not str or type(system["count"]) is not str:
+        raise StudyValidationError("count class is invalid")
     if human["count"] not in counts or system["count"] not in counts:
         raise StudyValidationError("count class is invalid")
+    support_by_count = {
+        "none": "hard_negative",
+        "one": "supported_1d",
+        "multiple": "supported_1d",
+        "unknown": "unsupported_2d",
+    }
+    if (
+        type(human["target_support"]) is not str
+        or human["target_support"] != support_by_count[human["count"]]
+    ):
+        raise StudyValidationError("human target support is incoherent with count")
     if human["ready"] not in {"ready", "not_ready", "unknown"}:
         raise StudyValidationError("human ready label is invalid")
     if type(human["guidance_eligible"]) is not bool:
         raise StudyValidationError("human guidance eligibility must be boolean")
+    if human["ready"] == "ready" and human["guidance_eligible"]:
+        raise StudyValidationError("human ready cannot coexist with guidance eligibility")
+    if human["ready"] == "ready" and (
+        human["count"] != "one" or human["target_support"] != "supported_1d"
+    ):
+        raise StudyValidationError("human ready requires one supported target")
+    if human["guidance_eligible"] and (
+        human["count"] != "one" or human["target_support"] != "supported_1d"
+    ):
+        raise StudyValidationError("human guidance eligibility violates the count/support veto")
     if type(system["ready"]) is not bool or type(system["guidance_actions"]) is not list:
         raise StudyValidationError("system ready and guidance action types are invalid")
     allowed_actions = {
@@ -342,8 +476,24 @@ def _validate_observation(
         action not in allowed_actions for action in system["guidance_actions"]
     ):
         raise StudyValidationError("guidance actions are outside the content-free allowlist")
+    localization = system["localization_success"]
+    if localization is not None and type(localization) is not bool:
+        raise StudyValidationError("localization success must be an exact boolean or null")
+    if system["count"] == "one":
+        if localization is None:
+            raise StudyValidationError("one system count requires a localization result")
+    elif localization is not None or system["ready"] or system["guidance_actions"]:
+        raise StudyValidationError(
+            "non-one system count requires null localization, no readiness, and no guidance"
+        )
+    if (system["ready"] or system["guidance_actions"]) and localization is not True:
+        raise StudyValidationError("system readiness or guidance requires successful localization")
     if system["ready"] and system["guidance_actions"]:
         raise StudyValidationError("ready observation cannot include a guidance action")
+    if system["guidance_actions"] and (
+        human["count"] != "one" or human["target_support"] != "supported_1d"
+    ):
+        raise StudyValidationError("system guidance violates the human count/support veto")
     if document["guidance_transition"] not in {
         None,
         "improving",
@@ -366,10 +516,12 @@ def _validate_observation(
         "max_observations",
     }:
         raise StudyValidationError("session end is invalid")
-    if type(document["latency_ms"]) not in {int, float} or not math.isfinite(
-        document["latency_ms"]
+    if (
+        type(document["latency_ms"]) not in {int, float}
+        or not math.isfinite(document["latency_ms"])
+        or document["latency_ms"] < 0
     ):
-        raise StudyValidationError("latency must be finite")
+        raise StudyValidationError("latency must be finite and nonnegative")
     return document
 
 
@@ -403,7 +555,9 @@ def _cluster_interval(
             sampled_rows.extend(clusters[generator.choice(item_ids)])
         denominator = sum(eligible(row) for row in sampled_rows)
         if denominator:
-            values.append(sum(predicate(row) for row in sampled_rows) / denominator)
+            values.append(
+                sum(predicate(row) and eligible(row) for row in sampled_rows) / denominator
+            )
     minimum_usable = math.ceil(replicates * 0.95)
     if len(values) < minimum_usable:
         return {"lower": None, "upper": None, "usable_replicates": len(values)}
@@ -424,7 +578,7 @@ def _proportion_metric(
     replicates: int,
 ) -> dict[str, Any]:
     denominator = sum(eligible(row) for row in rows)
-    numerator = sum(predicate(row) for row in rows)
+    numerator = sum(predicate(row) and eligible(row) for row in rows)
     return {
         "numerator": numerator,
         "denominator": denominator,
@@ -442,12 +596,9 @@ def _proportion_metric(
 def aggregate_live_report(
     locked: object,
     observations: list[object],
-    *,
-    bootstrap_replicates: int = 10000,
 ) -> dict[str, Any]:
     verify_manifest_lock(locked)
-    if type(bootstrap_replicates) is not int or not 1 <= bootstrap_replicates <= 10000:
-        raise StudyValidationError("bootstrap_replicates must be an integer in [1, 10000]")
+    bootstrap_replicates = _BOOTSTRAP_WORK_REPLICATES
     manifest = locked["manifest"]
     fingerprint = locked["lock"]["fingerprint"]
     sessions = {row["session_id"]: row for row in manifest["sessions"]}
@@ -491,7 +642,8 @@ def aggregate_live_report(
                 )
         elif len(session_rows) != 1 or session_rows[0]["observation_index"] != 1:
             raise StudyValidationError(
-                "missing or excluded session requires one accounting row at index 1"
+                "session requires analyzed or missing or excluded accounting; missing or "
+                "excluded session requires one accounting row at index 1"
             )
     attempted_sessions = {row["session_id"] for row in analyzed}
     missing_sessions = {row["session_id"] for row in missing}
@@ -503,6 +655,8 @@ def aggregate_live_report(
         raise StudyValidationError(
             "every planned session requires analyzed, missing, or excluded accounting"
         )
+    if analyzed and (len(attempted_sessions) != 24 or missing_sessions or excluded_sessions):
+        raise StudyValidationError("partial analyzed evidence is rejected fail-closed")
 
     def evaluable_count(row: dict[str, Any]) -> bool:
         return row["human"]["count"] != "unknown"
@@ -523,7 +677,11 @@ def aggregate_live_report(
         return ready_evaluable(row) and row["system"]["ready"]
 
     def system_abstained(row: dict[str, Any]) -> bool:
-        return not row["system"]["ready"] and not row["system"]["guidance_actions"]
+        return (
+            abstention_required(row)
+            and not row["system"]["ready"]
+            and not row["system"]["guidance_actions"]
+        )
 
     def abstention_required(row: dict[str, Any]) -> bool:
         return row["human"]["count"] in {"none", "multiple", "unknown"}
@@ -561,9 +719,10 @@ def aggregate_live_report(
         return row["guidance_transition"] == "improving"
 
     def unsafe_or_worsening(row: dict[str, Any]) -> bool:
-        return transition_evaluable(row) and (
-            row["unsafe"] or row["guidance_transition"] == "worsening"
-        )
+        return row["unsafe"] or row["guidance_transition"] == "worsening"
+
+    def safety_evaluable(row: dict[str, Any]) -> bool:
+        return row["unsafe"] or transition_evaluable(row)
 
     metrics = {
         "count_accuracy": _proportion_metric(
@@ -629,9 +788,32 @@ def aggregate_live_report(
             analyzed,
             sessions,
             unsafe_or_worsening,
-            transition_evaluable,
+            safety_evaluable,
             replicates=bootstrap_replicates,
         ),
+    }
+    metric_evidence = {
+        "count_evaluable": sum(evaluable_count(row) for row in analyzed),
+        "count_correct": sum(count_correct(row) for row in analyzed),
+        "human_not_ready": sum(human_not_ready(row) for row in analyzed),
+        "false_ready": sum(false_ready(row) for row in analyzed),
+        "ready_evaluable": sum(ready_evaluable(row) for row in analyzed),
+        "predicted_ready": sum(predicted_ready(row) for row in analyzed),
+        "ready_correct": sum(ready_correct(row) for row in analyzed),
+        "abstention_required": sum(abstention_required(row) for row in analyzed),
+        "system_abstained": sum(system_abstained(row) for row in analyzed),
+        "guidance_eligibility_evaluable": sum(
+            guidance_eligibility_evaluable(row) for row in analyzed
+        ),
+        "guidance_eligibility_correct": sum(guidance_eligibility_correct(row) for row in analyzed),
+        "localization_eligible": sum(localization_eligible(row) for row in analyzed),
+        "localization_succeeded": sum(localization_success(row) for row in analyzed),
+        "guidance_displayed": sum(guidance_displayed(row) for row in analyzed),
+        "exactly_one_action": sum(exactly_one_action(row) for row in analyzed),
+        "transition_evaluable": sum(transition_evaluable(row) for row in analyzed),
+        "transition_improving": sum(transition_improving(row) for row in analyzed),
+        "safety_evaluable": sum(safety_evaluable(row) for row in analyzed),
+        "unsafe_or_worsening": sum(unsafe_or_worsening(row) for row in analyzed),
     }
     reason_counts: dict[str, int] = {}
     for row in missing:
@@ -754,9 +936,10 @@ def aggregate_live_report(
             "name": "physical-item-cluster-bootstrap-percentile",
             "confidence": 0.95,
             "seed": 260826,
-            "replicates": bootstrap_replicates,
+            "replicates": 10000,
         },
         "metrics": metrics,
+        "metric_evidence": metric_evidence,
         "count_confusion": confusion,
         "latency_ms": latency,
         "guidance_transitions": transitions,
@@ -821,6 +1004,7 @@ def validate_report(report: object) -> None:
             "denominators",
             "confidence_method",
             "metrics",
+            "metric_evidence",
             "count_confusion",
             "latency_ms",
             "guidance_transitions",
@@ -871,8 +1055,10 @@ def validate_report(report: object) -> None:
         raise StudyValidationError("report denominator sums are incoherent")
     status = document["status"]
     if status == "completed_locked_run":
-        if not attempted or not analyzed or not clusters:
-            raise StudyValidationError("completed status requires analyzed live evidence")
+        if planned != 24 or attempted != 24 or missing or excluded or not analyzed or not clusters:
+            raise StudyValidationError(
+                "completed status requires all 24 sessions with no missing or excluded"
+            )
     elif status in {"protocol_only", "live_pending"}:
         if attempted or analyzed or clusters:
             raise StudyValidationError("pending status cannot contain analyzed live evidence")
@@ -890,7 +1076,7 @@ def validate_report(report: object) -> None:
         or type(confidence["seed"]) is not int
         or confidence["seed"] != 260826
         or type(confidence["replicates"]) is not int
-        or not 1 <= confidence["replicates"] <= 10000
+        or confidence["replicates"] != 10000
     ):
         raise StudyValidationError("confidence method metadata is invalid")
     replicates = confidence["replicates"]
@@ -940,6 +1126,59 @@ def validate_report(report: object) -> None:
             or not 0 <= lower <= upper <= 1
         ):
             raise StudyValidationError("usable metric interval is invalid")
+
+    metric_evidence_names = {
+        "count_evaluable",
+        "count_correct",
+        "human_not_ready",
+        "false_ready",
+        "ready_evaluable",
+        "predicted_ready",
+        "ready_correct",
+        "abstention_required",
+        "system_abstained",
+        "guidance_eligibility_evaluable",
+        "guidance_eligibility_correct",
+        "localization_eligible",
+        "localization_succeeded",
+        "guidance_displayed",
+        "exactly_one_action",
+        "transition_evaluable",
+        "transition_improving",
+        "safety_evaluable",
+        "unsafe_or_worsening",
+    }
+    evidence = _require_mapping(document["metric_evidence"], "metric evidence")
+    _require_exact_keys(evidence, metric_evidence_names, "metric evidence")
+    for name in metric_evidence_names:
+        if _require_nonnegative_int(evidence[name], f"metric evidence {name}") > analyzed:
+            raise StudyValidationError("metric evidence exceeds analyzed observations")
+    evidence_links = {
+        "count_accuracy": ("count_correct", "count_evaluable"),
+        "false_ready": ("false_ready", "human_not_ready"),
+        "ready_coverage": ("predicted_ready", "ready_evaluable"),
+        "ready_precision": ("ready_correct", "predicted_ready"),
+        "required_abstention": ("system_abstained", "abstention_required"),
+        "guidance_eligibility": (
+            "guidance_eligibility_correct",
+            "guidance_eligibility_evaluable",
+        ),
+        "localization_success": ("localization_succeeded", "localization_eligible"),
+        "exactly_one_action": ("exactly_one_action", "guidance_displayed"),
+        "guidance_improvement": ("transition_improving", "transition_evaluable"),
+        "unsafe_or_worsening": ("unsafe_or_worsening", "safety_evaluable"),
+    }
+    for metric_name, (numerator_name, denominator_name) in evidence_links.items():
+        if (
+            metrics[metric_name]["numerator"] != evidence[numerator_name]
+            or metrics[metric_name]["denominator"] != evidence[denominator_name]
+        ):
+            raise StudyValidationError("metric is incoherent with independent aggregate evidence")
+    if any(
+        evidence[numerator] > evidence[denominator]
+        for numerator, denominator in evidence_links.values()
+    ):
+        raise StudyValidationError("metric evidence numerator exceeds denominator")
 
     count_classes = {"none", "one", "multiple", "unknown"}
     confusion = _require_mapping(document["count_confusion"], "count confusion")
@@ -992,7 +1231,7 @@ def validate_report(report: object) -> None:
     if (
         metrics["guidance_improvement"]["denominator"] != transition_evaluable
         or metrics["guidance_improvement"]["numerator"] != transitions["improving"]
-        or metrics["unsafe_or_worsening"]["denominator"] != transition_evaluable
+        or metrics["unsafe_or_worsening"]["denominator"] != evidence["safety_evaluable"]
         or metrics["unsafe_or_worsening"]["numerator"] < transitions["worsening"]
     ):
         raise StudyValidationError("transition metrics are incoherent")
@@ -1200,6 +1439,7 @@ def public_supplement_omitted_report() -> dict[str, Any]:
 
 def validate_public_supplement_report(report: object) -> None:
     document = _require_mapping(report, "public supplement report")
+    _assert_content_free(document)
     _require_exact_keys(
         document,
         {
@@ -1217,16 +1457,29 @@ def validate_public_supplement_report(report: object) -> None:
     )
     if document["schema_version"] != "b26-public-supplement-report-v1":
         raise StudyValidationError("unsupported public supplement schema_version")
+    if document["protocol_version"] != "B26-live-v1.0":
+        raise StudyValidationError("unsupported public supplement protocol_version")
     if document["study_track"] != "offline_public_supplement":
         raise StudyValidationError("public supplement track is invalid")
     if document["status"] != "public_supplement_omitted" or document["dataset"] is not None:
         raise StudyValidationError("omitted public supplement cannot identify a dataset")
-    if document["denominators"] != {
-        "eligible_images": 0,
-        "excluded_images": 0,
-        "missing_images": 0,
-    }:
+    if document["scope"] != "offline-detector-only-no-live-claims":
+        raise StudyValidationError("public supplement scope is invalid")
+    denominators = _require_mapping(document["denominators"], "public denominators")
+    _require_exact_keys(
+        denominators,
+        {"eligible_images", "excluded_images", "missing_images"},
+        "public denominators",
+    )
+    if any(type(value) is not int or value != 0 for value in denominators.values()):
         raise StudyValidationError("omitted public supplement denominators must remain zero")
+    omission = _require_mapping(document["omission"], "public omission")
+    _require_exact_keys(omission, {"reason_code", "candidates_audited"}, "public omission")
+    if omission["reason_code"] != "dataset_rights_and_provenance_unverified":
+        raise StudyValidationError("public omission reason is invalid")
+    audited = omission["candidates_audited"]
+    if type(audited) is not int or not 0 <= audited <= 1_000_000:
+        raise StudyValidationError("public audited candidate count is invalid")
     boundary = _require_mapping(document["claim_boundary"], "public claim boundary")
     if boundary != {
         "physical_guidance": False,
